@@ -1,0 +1,11 @@
+export default function usePasswordStrength(password: string) {
+  let score = 0;
+
+  if (!password) return 0;
+  if (password.length > 7) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+
+  return score;
+}
