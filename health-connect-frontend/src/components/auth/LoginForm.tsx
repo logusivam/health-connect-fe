@@ -4,9 +4,10 @@ import type { Role, AuthView } from '../../types/auth.types';
 
 interface LoginFormProps {
   onNavigate: (view: AuthView) => void;
+  onLogin: (role: Role) => void;
 }
 
-const LoginForm: React.FC<LoginFormProps> = ({ onNavigate }) => {
+const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('PATIENT');
@@ -21,7 +22,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onNavigate }) => {
       return;
     }
     console.log('Login Submitted:', { email, password, role, ...(role === 'DOCTOR' && { otp }) });
-    alert(`Logged in successfully as ${role}!`);
+    onLogin(role);
   };
 
   return (

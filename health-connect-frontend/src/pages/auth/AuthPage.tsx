@@ -5,19 +5,25 @@ import LoginForm from '../../components/auth/LoginForm';
 import RegisterForm from '../../components/auth/RegisterForm';
 import ForgotPasswordForm from '../../components/auth/ForgotPasswordForm';
 
-const AuthPage: React.FC = () => {
+// 1. Add props interface for AuthPage
+interface AuthPageProps {
+  onLogin: (role: string) => void;
+}
+
+const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [activeView, setActiveView] = useState<AuthView>('login');
 
   const renderForm = () => {
     switch (activeView) {
       case 'login':
-        return <LoginForm onNavigate={setActiveView} />;
+        // 3. Pass onLogin down to LoginForm
+        return <LoginForm onNavigate={setActiveView} onLogin={onLogin} />;
       case 'register':
         return <RegisterForm onNavigate={setActiveView} />;
       case 'forgot_password':
         return <ForgotPasswordForm onNavigate={setActiveView} />;
       default:
-        return <LoginForm onNavigate={setActiveView} />;
+        return <LoginForm onNavigate={setActiveView} onLogin={onLogin} />;
     }
   };
 
