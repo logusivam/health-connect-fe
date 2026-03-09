@@ -1,4 +1,4 @@
-export type ViewState = 'DASHBOARD' | 'PROFILE' | 'HISTORY' | 'BOOK_APPOINTMENT';
+export type ViewState = 'DASHBOARD' | 'HISTORY' | 'UNSUITABLE_MEDICINE' | 'BOOK_APPOINTMENT' | 'PROFILE';
 
 export interface PatientProfile {
   id: string;
@@ -10,6 +10,7 @@ export interface PatientProfile {
   email: string;
   address: string;
   allergies: string[];
+  avatar?: string;
   emergencyContact: {
     name: string;
     relation: string;
@@ -37,9 +38,19 @@ export interface TreatmentRecord {
   notes: string;
 }
 
+export interface UnsuitableMedicine {
+  id: string;
+  medicineName: string;
+  flaggedBy: string;
+  department: string;
+  reason: string;
+  dateFlagged: string;
+}
+
 export interface BookedAppointment {
   id: string;
   doctorName: string;
+  department: string;
   problem: string;
   date: string;
   status: 'Upcoming' | 'Completed' | 'Cancelled';

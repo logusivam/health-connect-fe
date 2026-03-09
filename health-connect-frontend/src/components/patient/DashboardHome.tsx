@@ -12,7 +12,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      <div className="bg-gradient-to-r from-blue-600 to-teal-600 rounded-2xl p-8 text-white shadow-lg shadow-blue-200">
+      <div className="bg-gradient-to-r from-blue-600 to-teal-600 rounded-2xl p-8 text-white shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:shadow-blue-300/50">
         <h2 className="text-3xl font-bold mb-2">Hello, {mockProfile.name.split(' ')[0]}!</h2>
         <p className="text-blue-50 max-w-2xl">
           Welcome to your Health Connect patient portal. Here you can view your latest medical records, check your upcoming appointments, and monitor your health vitals.
@@ -21,7 +21,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Upcoming Appointment */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
               <Calendar className="w-5 h-5" />
@@ -40,7 +40,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
         </div>
 
         {/* Latest Vitals */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2.5 bg-red-50 text-red-600 rounded-xl">
               <Activity className="w-5 h-5" />
@@ -60,7 +60,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
         </div>
 
         {/* Active Medications */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2.5 bg-teal-50 text-teal-600 rounded-xl">
               <Pill className="w-5 h-5" />
@@ -71,10 +71,10 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
             {mockMedications.map((med) => (
               <li 
                 key={med.id} 
-                className="flex items-center justify-between text-sm cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors"
+                className="flex items-center justify-between text-sm cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors group"
                 onClick={() => setSelectedMed(med)}
               >
-                <span className="font-medium text-slate-700">{med.name}</span>
+                <span className="font-medium text-slate-700 group-hover:text-blue-600 transition-colors">{med.name}</span>
                 <span className="text-slate-500 text-xs bg-slate-100 px-2 py-1 rounded-md">{med.frequency}</span>
               </li>
             ))}
@@ -101,7 +101,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
               </div>
               <button 
                 onClick={() => onNavigate('HISTORY', record.id)}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1 transition-transform hover:translate-x-1"
               >
                 View <ChevronRight className="w-4 h-4" />
               </button>

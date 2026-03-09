@@ -52,6 +52,7 @@ const BookAppointmentView: React.FC = () => {
     const newAppointment: BookedAppointment = {
       id: `apt-${Date.now()}`,
       doctorName: selectedDoctorDetails?.name || 'Unknown Doctor',
+      department: department || selectedDoctorDetails?.specialty || 'General Practice',
       problem: problemBrief,
       date: date,
       status: 'Upcoming'
@@ -77,7 +78,7 @@ const BookAppointmentView: React.FC = () => {
         <p className="text-slate-500">Schedule a new consultation with our specialists.</p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8 relative">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8 relative transition-all hover:shadow-md">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* Department Dropdown */}
           <div className="space-y-2">
@@ -126,7 +127,7 @@ const BookAppointmentView: React.FC = () => {
         </div>
 
         {/* Doctors List */}
-        <div className="space-y-4">
+        <div className="space-y-4 animate-in fade-in duration-500">
           <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-2">Available Doctors</h3>
           
           {!date ? (
@@ -145,20 +146,20 @@ const BookAppointmentView: React.FC = () => {
                   key={doc.id}
                   disabled={!doc.isAvailable}
                   onClick={() => setSelectedDoctor(doc.id)}
-                  className={`flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                  className={`flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all duration-300 ${
                     !doc.isAvailable 
                       ? 'opacity-60 cursor-not-allowed border-slate-100 bg-slate-50' 
                       : selectedDoctor === doc.id
-                        ? 'border-blue-600 bg-blue-50 shadow-md shadow-blue-100'
-                        : 'border-slate-200 bg-white hover:border-blue-300'
+                        ? 'border-blue-600 bg-blue-50 shadow-md shadow-blue-100 scale-[1.02]'
+                        : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
                   }`}
                 >
                   {/* Avatar rendering */}
                   {doc.avatar ? (
-                     <img src={doc.avatar} alt={doc.name} className={`w-12 h-12 rounded-full object-cover shrink-0 border ${!doc.isAvailable ? 'border-slate-200 grayscale' : 'border-blue-200'}`} />
+                     <img src={doc.avatar} alt={doc.name} className={`w-12 h-12 rounded-full object-cover shrink-0 border transition-all ${!doc.isAvailable ? 'border-slate-200 grayscale' : 'border-blue-200 group-hover:border-blue-400'}`} />
                   ) : (
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold border ${
-                      !doc.isAvailable ? 'bg-slate-200 text-slate-500 border-slate-200' : 'bg-blue-100 text-blue-700 border-blue-200'
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold border transition-all ${
+                      !doc.isAvailable ? 'bg-slate-200 text-slate-500 border-slate-200' : 'bg-blue-100 text-blue-700 border-blue-200 group-hover:bg-blue-200'
                     }`}>
                       {doc.name.replace('Dr. ', '').charAt(0)}
                     </div>
@@ -181,10 +182,10 @@ const BookAppointmentView: React.FC = () => {
 
         {/* Submit Button */}
         {date && selectedDoctor && (
-          <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end">
+          <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end animate-in fade-in slide-in-from-bottom-2">
             <button 
               onClick={handleConfirmAppointmentClick}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-xl shadow-lg shadow-blue-200 transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-xl shadow-lg shadow-blue-200 transition-all hover:scale-105 active:scale-95"
             >
               Confirm Appointment
             </button>
@@ -195,7 +196,7 @@ const BookAppointmentView: React.FC = () => {
       {/* Upcoming Appointments Section */}
       <div className="space-y-4 pt-6">
         <h3 className="text-xl font-bold text-slate-900">Upcoming Appointments</h3>
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
           {appointments.length === 0 ? (
             <div className="text-center py-8 text-slate-500">
               You have no appointments scheduled.
@@ -206,6 +207,7 @@ const BookAppointmentView: React.FC = () => {
                 <thead className="bg-slate-50 border-b border-slate-100">
                   <tr>
                     <th className="px-6 py-4 font-semibold text-slate-700">Doctor Name</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Problem Brief</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Date</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
@@ -216,6 +218,9 @@ const BookAppointmentView: React.FC = () => {
                     <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">
                         {appt.doctorName}
+                      </td>
+                      <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
+                        {appt.department}
                       </td>
                       <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">
                         {appt.problem}
@@ -293,7 +298,7 @@ const BookAppointmentView: React.FC = () => {
 
                   <button 
                     onClick={() => setPaymentStep('OPTIONS')}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl transition-colors shadow-lg shadow-blue-200"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-200 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
                   >
                     Proceed to Pay ₹{APPOINTMENT_FEE}
                   </button>
@@ -365,7 +370,7 @@ const BookAppointmentView: React.FC = () => {
                     </button>
                     <button 
                       onClick={handleProcessPayment}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl transition-colors shadow-lg shadow-blue-200"
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-[0.98]"
                     >
                       Pay ₹{APPOINTMENT_FEE}
                     </button>
@@ -377,7 +382,7 @@ const BookAppointmentView: React.FC = () => {
               {paymentStep === 'SUCCESS' && (
                 <div className="text-center py-8 animate-in zoom-in-95 duration-300">
                   <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <CheckCircle2 className="w-10 h-10 text-green-600" />
+                    <CheckCircle2 className="w-10 h-10 text-green-600 animate-in spin-in-180 duration-500" />
                   </div>
                   <h3 className="text-2xl font-bold text-slate-900 mb-2">Payment Successful!</h3>
                   <p className="text-slate-500 mb-6">Your appointment has been confirmed. You can view it in the upcoming appointments section.</p>

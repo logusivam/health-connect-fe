@@ -1,4 +1,4 @@
-import type { PatientProfile, Medication, TreatmentRecord, BookedAppointment } from '../types/patient.types';
+import type { PatientProfile, Medication, TreatmentRecord, UnsuitableMedicine, BookedAppointment } from '../types/patient.types';
 
 export const mockProfile: PatientProfile = {
   id: "PT-8842-91",
@@ -20,6 +20,11 @@ export const mockProfile: PatientProfile = {
 export const mockMedications: Medication[] = [
   { id: 'm1', name: 'Lisinopril 10mg', frequency: 'Daily', duration: '3 Months', fromDate: 'Nov 01, 2023', toDate: 'Feb 01, 2024', doctorName: 'Dr. Sarah Jenkins' },
   { id: 'm2', name: 'Vitamin D3', frequency: 'Weekly', duration: '6 Months', fromDate: 'Oct 15, 2023', toDate: 'Apr 15, 2024', doctorName: 'Dr. Michael Chen' }
+];
+
+export const mockUnsuitableMedicines: UnsuitableMedicine[] = [
+  { id: 'um1', medicineName: 'Penicillin VK 250mg', flaggedBy: 'Dr. Sarah Jenkins', department: 'General Practice', reason: 'Severe allergic reaction (Hives & Swelling)', dateFlagged: 'Oct 12, 2021' },
+  { id: 'um2', medicineName: 'Ibuprofen 800mg', flaggedBy: 'Dr. Michael Chen', department: 'Cardiology', reason: 'Causes severe gastrointestinal upset for patient', dateFlagged: 'Jan 05, 2022' }
 ];
 
 export const mockDepartments = ['General Practice', 'Cardiology', 'Dermatology', 'Neurology', 'Orthopedics'];
@@ -63,6 +68,6 @@ export const mockHistory: TreatmentRecord[] = [
 ];
 
 export const initialAppointments: BookedAppointment[] = [
-  { id: 'apt-1', doctorName: 'Dr. Michael Chen', problem: 'Routine Heart Checkup', date: '2024-03-15', status: 'Upcoming' },
-  { id: 'apt-2', doctorName: 'Dr. Sarah Jenkins', problem: 'Seasonal flu symptoms', date: '2023-11-01', status: 'Completed' }
+  { id: 'apt-1', doctorName: 'Dr. Michael Chen', department: 'Cardiology', problem: 'Routine Heart Checkup', date: '2024-03-15', status: 'Upcoming' },
+  { id: 'apt-2', doctorName: 'Dr. Sarah Jenkins', department: 'General Practice', problem: 'Seasonal flu symptoms', date: '2023-11-01', status: 'Completed' }
 ];
