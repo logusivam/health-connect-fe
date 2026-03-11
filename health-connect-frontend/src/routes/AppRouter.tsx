@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import AuthPage from '../pages/auth/AuthPage';
 import PatientDashboard from '../pages/patient/PatientDashboard';
+import DoctorDashboard from '../pages/doctor/DoctorDashboard';
 import type { Role } from '../types/auth.types';
 
 export default function AppRouter() {
@@ -19,14 +20,7 @@ export default function AppRouter() {
 
   // Placeholder for Doctor Dashboard
   if (isAuthenticated && userRole === 'DOCTOR') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 font-sans">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Doctor Dashboard</h2>
-          <p className="text-slate-500">Coming soon...</p>
-        </div>
-      </div>
-    );
+    return <DoctorDashboard />;
   }
 
   // Default: Render the Auth page and pass the handleLogin function
