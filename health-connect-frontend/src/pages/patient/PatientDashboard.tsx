@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, HeartPulse, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import favIcon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/patient.types';
 import { mockProfile } from '../../data/mockPatientData';
 
@@ -53,8 +54,8 @@ export default function PatientDashboard() {
         </button>
 
         <div className={`p-6 flex items-center gap-3 border-b border-slate-800 h-20 shrink-0 ${isSidebarOpen ? 'justify-start' : 'justify-center px-0'}`}>
-          <div className="bg-blue-500 p-2 rounded-xl shrink-0 transition-transform hover:scale-110">
-            <HeartPulse className="w-6 h-6 text-white" />
+          <div className="">
+            <img src={favIcon} alt="Health Connect Logo" className="w-10 h-10" />
           </div>
           <div className={`overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>
             <h1 className="text-2xl font-bold tracking-tight text-white whitespace-nowrap">
