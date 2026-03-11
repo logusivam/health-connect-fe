@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Stethoscope, LayoutDashboard, FilePlus, AlertTriangle, User, History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { HeartPulse, LayoutDashboard, FilePlus, AlertTriangle, User, History, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ViewState } from '../../types/doctor.types';
 import { mockDoctor } from '../../data/mockDoctorData';
 
@@ -39,13 +39,14 @@ export default function DoctorDashboard() {
           {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
 
+        {/* Updated Sidebar Logo to HealthConnect */}
         <div className={`p-6 flex items-center gap-3 border-b border-slate-800 h-20 shrink-0 ${isSidebarOpen ? 'justify-start' : 'justify-center px-0'}`}>
-          <div className="bg-teal-500 p-2 rounded-xl shrink-0 transition-transform hover:scale-110">
-            <Stethoscope className="w-6 h-6 text-white" />
+          <div className="bg-blue-500 p-2 rounded-xl shrink-0 transition-transform hover:scale-110">
+            <HeartPulse className="w-6 h-6 text-white" />
           </div>
           <div className={`overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>
-            <h1 className="text-xl font-bold tracking-tight text-white whitespace-nowrap">
-              Doctor<span className="text-teal-400">Portal</span>
+            <h1 className="text-2xl font-bold tracking-tight text-white whitespace-nowrap">
+              Health<span className="text-blue-400">Connect</span>
             </h1>
           </div>
         </div>
@@ -84,16 +85,18 @@ export default function DoctorDashboard() {
         
         {/* Topbar */}
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-10 transition-all duration-300">
+          
+          {/* Updated Mobile Topbar Logo to HealthConnect */}
           <div className="flex items-center gap-3 lg:hidden">
-            <div className="bg-teal-500 p-1.5 rounded-lg">
-              <Stethoscope className="w-5 h-5 text-white" />
+            <div className="bg-blue-600 p-1.5 rounded-lg">
+              <HeartPulse className="w-5 h-5 text-white" strokeWidth={2.5} />
             </div>
-            <h1 className="text-xl font-bold text-slate-900">DoctorPortal</h1>
+            <h1 className="text-xl font-bold text-slate-900">Health<span className="text-blue-600">Connect</span></h1>
           </div>
           
-          {/* Breadcrumb / Title */}
+          {/* Updated Breadcrumb / Title */}
           <div className="hidden lg:flex items-center text-slate-500 font-medium">
-             <span className="text-slate-400">Workspace</span>
+             <span className="text-slate-400">Doctor's</span>
              <ChevronRight className="w-4 h-4 mx-2" />
              <span className="text-slate-900 font-semibold">
                {navItems.find(i => i.id === activeView)?.label}
