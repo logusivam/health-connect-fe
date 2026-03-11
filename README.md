@@ -38,23 +38,50 @@ production system.
 
 ```
 health-connect-fe/
-├── health-connect-frontend/   # actual SPA
-│   ├── public/                # static assets
+├── health-connect-frontend/        # actual SPA
+│   ├── public/                     # static assets (favicons, robots.txt)
 │   ├── src/
-│   │   ├── components/        # reusable UI components (auth, patient views)
-│   │   ├── data/              # mock data used by views
-│   │   ├── hooks/             # custom React hooks
-│   │   ├── pages/             # top‑level pages (AuthPage, PatientDashboard)
-│   │   ├── routes/            # router logic (`AppRouter`)
-│   │   ├── styles/            # global css (imports Tailwind base)
-│   │   └── types/             # shared TypeScript interfaces/types
+│   │   ├── components/
+│   │   │   ├── auth/
+│   │   │   │   ├── LoginForm.tsx
+│   │   │   │   ├── RegisterForm.tsx
+│   │   │   │   └── ForgotPasswordForm.tsx
+│   │   │   ├── patient/
+│   │   │   │   ├── BookAppointmentView.tsx
+│   │   │   │   ├── DashboardHome.tsx
+│   │   │   │   ├── ProfileView.tsx
+│   │   │   │   ├── TreatmentHistoryView.tsx
+│   │   │   │   ├── UnsuitableMedicineView.tsx
+│   │   │   │   └── Topbar.tsx
+│   │   ├── data/
+│   │   │   └── mockPatientData.ts
+│   │   ├── hooks/
+│   │   │   └── usePasswordStrength.ts
+│   │   ├── pages/
+│   │   │   ├── auth/
+│   │   │   │   └── AuthPage.tsx
+│   │   │   └── patient/
+│   │   │       └── PatientDashboard.tsx
+│   │   ├── routes/
+│   │   │   └── AppRouter.tsx
+│   │   ├── styles/
+│   │   │   └── index.css
+│   │   └── types/
+│   │       ├── auth.types.ts
+│   │       └── patient.types.ts
 │   ├── index.html
 │   ├── package.json
-│   ├── tsconfig.*.json
+│   ├── package-lock.json
+│   ├── tsconfig.app.json
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
 │   ├── vite.config.ts
-│   └── README.md              # Vite template instructions
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
+│   ├── eslint.config.js
+│   └── README.md                   # Vite template instructions
 ├── .gitignore
-└── README.md                  # this file
+└── README.md                       # this file
 ```
 
 The frontend lives under `health-connect-frontend/`. The outer folder primarily contains the
