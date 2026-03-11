@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { HeartPulse, Shield, Activity, Stethoscope } from 'lucide-react';
+import { Shield, Activity, Stethoscope } from 'lucide-react';
+import favIcon from '../../assets/logo-v1.png';
 import type { AuthView } from '../../types/auth.types';
 import LoginForm from '../../components/auth/LoginForm';
 import RegisterForm from '../../components/auth/RegisterForm';
@@ -35,9 +36,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         <div className="w-full max-w-md mx-auto">
           
           {/* Logo / Header */}
-          <div className="flex items-center gap-3 mb-10">
-            <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-200">
-              <HeartPulse className="w-7 h-7 text-white" strokeWidth={2.5} />
+          <div className="flex items-center gap-0 mb-10">
+            <div className="">
+              <img src={favIcon} alt="Health Connect Logo" className="w-10 h-10" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
               Health<span className="text-blue-600">Connect</span>
