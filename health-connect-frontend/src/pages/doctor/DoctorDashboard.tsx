@@ -89,8 +89,8 @@ export default function DoctorDashboard() {
           
           {/* Updated Mobile Topbar Logo to HealthConnect */}
           <div className="flex items-center gap-3 lg:hidden">
-            <div className="bg-blue-600 p-1.5 rounded-lg">
-              <HeartPulse className="w-5 h-5 text-white" strokeWidth={2.5} />
+            <div className="">
+              <img src={favIcon} alt="Health Connect Logo" className="w-10 h-10" />
             </div>
             <h1 className="text-xl font-bold text-slate-900">Health<span className="text-blue-600">Connect</span></h1>
           </div>
