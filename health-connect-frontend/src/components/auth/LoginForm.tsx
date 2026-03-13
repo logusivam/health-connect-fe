@@ -4,7 +4,7 @@ import type { Role, AuthView } from '../../types/auth.types';
 
 interface LoginFormProps {
   onNavigate: (view: AuthView) => void;
-  onLogin: (role: Role) => void;
+  onLogin: (role: Role) => void; 
 }
 
 const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
@@ -17,13 +17,18 @@ const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (role === 'DOCTOR' && otp.length < 6) {
+    
+    // Require OTP for both DOCTOR and ADMIN
+    if ((role === 'DOCTOR' || role === 'ADMIN') && otp.length < 6) {
       alert("Please enter a valid 6-digit OTP.");
       return;
     }
-    console.log('Login Submitted:', { email, password, role, ...(role === 'DOCTOR' && { otp }) });
-    onLogin(role);
+    
+    console.log('Login Submitted:', { email, password, role, ...((role === 'DOCTOR' || role === 'ADMIN') && { otp }) });
+    onLogin(role); 
   };
+
+  const requiresOtp = role === 'DOCTOR' || role === 'ADMIN';
 
   return (
     <>
@@ -42,6 +47,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
           >
             <option value="PATIENT">Patient</option>
             <option value="DOCTOR">Doctor</option>
+            <option value="ADMIN">System Admin</option>
           </select>
         </div>
 
@@ -61,7 +67,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
                 placeholder="name@example.com"
               />
             </div>
-            {role === 'DOCTOR' && (
+            {requiresOtp && (
               <button
                 type="button"
                 onClick={() => setOtpSent(true)}
@@ -106,7 +112,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
           </div>
         </div>
 
-        {role === 'DOCTOR' && (
+        {requiresOtp && (
           <div className="space-y-1.5 pt-2">
             <label className="text-sm font-semibold text-slate-700 block">Verification Code (OTP)</label>
             <input
