@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
-import type { Role, AuthView } from '../../types/auth.types';
+import type { Role } from '../../types/auth.types';
 
 interface LoginFormProps {
-  onNavigate: (view: AuthView) => void;
   onLogin: (role: Role) => void; 
 }
 
-const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
+const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('PATIENT');
@@ -17,13 +18,10 @@ const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Require OTP for both DOCTOR and ADMIN
     if ((role === 'DOCTOR' || role === 'ADMIN') && otp.length < 6) {
       alert("Please enter a valid 6-digit OTP.");
       return;
     }
-    
     console.log('Login Submitted:', { email, password, role, ...((role === 'DOCTOR' || role === 'ADMIN') && { otp }) });
     onLogin(role); 
   };
@@ -84,7 +82,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
             <label className="text-sm font-semibold text-slate-700 block">Password</label>
             <button 
               type="button" 
-              onClick={() => onNavigate('forgot_password')}
+              onClick={() => navigate('/forgot-password')}
               className="text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline"
             >
               Forgot password?
@@ -143,7 +141,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onNavigate, onLogin }) => {
         <p className="text-sm text-slate-600">
           Don't have an account?{' '}
           <button
-            onClick={() => onNavigate('register')}
+            onClick={() => navigate('/register')}
             className="font-bold text-blue-600 hover:text-blue-700 hover:underline transition-all"
           >
             Sign up

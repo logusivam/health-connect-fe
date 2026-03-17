@@ -62,7 +62,7 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
       </div>
 
       <div className="flex justify-center pt-8 pb-12">
-        <button onClick={() => alert('Logged out securely.')} className="flex items-center gap-2 px-8 py-3.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-full font-semibold transition-all active:scale-95 border border-red-100">
+        <button onClick={() => { localStorage.removeItem('userRole'); window.location.href = '/login'; }} className="flex items-center gap-2 px-8 py-3.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-full font-semibold transition-all active:scale-95 border border-red-100">
           <LogOut className="w-5 h-5" /> Log Out Securely
         </button>
       </div>

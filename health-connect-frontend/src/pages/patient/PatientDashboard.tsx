@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom'; // Add this line
 import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import favIcon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/patient.types';
@@ -12,7 +13,13 @@ import BookAppointmentView from '../../components/patient/BookAppointmentView';
 import UnsuitableMedicineView from '../../components/patient/UnsuitableMedicineView';
 
 export default function PatientDashboard() {
-  const [activeView, setActiveView] = useState<ViewState>('DASHBOARD');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Dynamically get the view from the URL (e.g., /patient/history -> 'HISTORY')
+  const urlPath = location.pathname.split('/')[2];
+  const activeView = (urlPath ? urlPath.toUpperCase() : 'DASHBOARD') as ViewState;
+  
   const [highlightedRecordId, setHighlightedRecordId] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | undefined>(mockProfile.avatar);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -27,7 +34,9 @@ export default function PatientDashboard() {
   ] as const;
 
   const handleNavigate = (view: ViewState, recordId?: string) => {
-    setActiveView(view);
+    // Change the URL instead of just state
+    navigate(`/patient/${view.toLowerCase()}`); 
+    
     if (recordId) {
       setHighlightedRecordId(recordId);
       setTimeout(() => setHighlightedRecordId(null), 3000); 
@@ -94,7 +103,10 @@ export default function PatientDashboard() {
 
         <div className="p-4 border-t border-slate-800">
           <button 
-            onClick={() => alert('Logged out! (Redirecting to login screen)')}
+            onClick={() => { 
+              localStorage.removeItem('userRole');
+              window.location.href = '/login';
+            }}
             className={`w-full flex items-center group relative px-3 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors font-medium ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}
           >
             <LogOut className={`w-5 h-5 shrink-0 transition-all duration-300 ${isSidebarOpen ? 'mr-3' : 'mr-0'}`} />
