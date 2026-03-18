@@ -108,7 +108,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange }) => 
       {/* Logout Button placed at bottom center */}
       <div className="flex justify-center pt-4 pb-8">
         <button 
-          onClick={() => alert('Logged out successfully! (In a real app, this redirects to the login screen)')} 
+          onClick={() => { 
+            localStorage.removeItem('userRole');
+            window.location.href = '/login';
+          }} 
           className="flex items-center gap-2 px-6 py-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl font-semibold transition-all hover:scale-105 active:scale-95"
         >
           <LogOut className="w-5 h-5" />

@@ -101,7 +101,10 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       {/* Centered Logout Button */}
       <div className="flex justify-center pt-8 pb-12">
         <button 
-          onClick={() => alert('Logged out successfully! (In a real app, this redirects to the login screen)')} 
+          onClick={() => { 
+            localStorage.removeItem('userRole');
+            window.location.href = '/login';
+          }} 
           className="flex items-center gap-2 px-8 py-3.5 text-white bg-slate-900 hover:bg-slate-800 rounded-full font-semibold transition-all hover:shadow-lg active:scale-95"
         >
           <LogOut className="w-5 h-5" />

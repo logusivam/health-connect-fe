@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
-import type { Role, AuthView } from '../../types/auth.types';
+import type { Role } from '../../types/auth.types';
 import { usePasswordStrength } from '../../hooks/usePasswordStrength';
 
-interface ForgotPasswordFormProps {
-  onNavigate: (view: AuthView) => void;
-}
-
-const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onNavigate }) => {
+const ForgotPasswordForm: React.FC = () => {
+  const navigate = useNavigate();
   const [role, setRole] = useState<Role>('PATIENT');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -31,7 +29,7 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onNavigate }) =
     }
     console.log('Reset Password Submitted:', { role, email, otp, password });
     alert('Password reset successfully!');
-    onNavigate('login');
+    navigate('/login');
   };
 
   return (
@@ -51,6 +49,7 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onNavigate }) =
           >
             <option value="PATIENT">Patient</option>
             <option value="DOCTOR">Doctor</option>
+            <option value="ADMIN">System Admin</option>
           </select>
         </div>
 
@@ -178,7 +177,7 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onNavigate }) =
         <p className="text-sm text-slate-600">
           Remembered your password?{' '}
           <button
-            onClick={() => onNavigate('login')}
+            onClick={() => navigate('/login')}
             className="font-bold text-blue-600 hover:text-blue-700 hover:underline transition-all"
           >
             Back to login

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, FilePlus, AlertTriangle, User, History, ChevronLeft, ChevronRight } from 'lucide-react';
 import favIcon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/doctor.types';
@@ -11,7 +12,14 @@ import MedicationFlagView from '../../components/doctor/MedicationFlagView';
 import DoctorProfileView from '../../components/doctor/DoctorProfileView';
 
 export default function DoctorDashboard() {
-  const [activeView, setActiveView] = useState<ViewState>('DASHBOARD');
+  // 1. REMOVED useState for activeView and ADDED router hooks
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Extract the current view from the URL (e.g., /doctor/history -> 'HISTORY')
+  const urlPath = location.pathname.split('/')[2];
+  const activeView = (urlPath ? urlPath.toUpperCase() : 'DASHBOARD') as ViewState;
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [userAvatar, setUserAvatar] = useState<string | undefined>(mockDoctor.avatar);
 
@@ -22,6 +30,11 @@ export default function DoctorDashboard() {
     { id: 'MEDICATION_FLAGS', label: 'Medication Flags', icon: AlertTriangle },
     { id: 'PROFILE', label: 'My Profile', icon: User },
   ] as const;
+
+  // 2. ADDED a helper function to change the URL
+  const handleNavigate = (view: string) => {
+    navigate(`/doctor/${view.toLowerCase()}`);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
@@ -40,7 +53,7 @@ export default function DoctorDashboard() {
           {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
 
-        {/* Updated Sidebar Logo to HealthConnect */}
+        {/* Sidebar Logo */}
         <div className={`p-6 flex items-center gap-3 border-b border-slate-800 h-20 shrink-0 ${isSidebarOpen ? 'justify-start' : 'justify-center px-0'}`}>
           <div className="">
             <img src={favIcon} alt="Health Connect Logo" className="w-10 h-10" />
@@ -52,11 +65,11 @@ export default function DoctorDashboard() {
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-8 space-y-2 overflow-y-auto hide-scrollbar">
+        <nav className="flex-1 px-3 py-8 space-y-2 overflow-y-auto hide-scrollbar overflow-x-hidden">
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => handleNavigate(item.id)} // 3. UPDATED to handleNavigate
               className={`w-full flex items-center group relative px-3 py-3.5 rounded-xl transition-all font-medium ${
                 activeView === item.id 
                   ? 'bg-teal-600 text-white shadow-lg shadow-teal-900/20 scale-[1.02]' 
@@ -87,7 +100,7 @@ export default function DoctorDashboard() {
         {/* Topbar */}
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-10 transition-all duration-300">
           
-          {/* Updated Mobile Topbar Logo to HealthConnect */}
+          {/* Mobile Topbar Logo */}
           <div className="flex items-center gap-3 lg:hidden">
             <div className="">
               <img src={favIcon} alt="Health Connect Logo" className="w-10 h-10" />
@@ -95,12 +108,12 @@ export default function DoctorDashboard() {
             <h1 className="text-xl font-bold text-slate-900">Health<span className="text-blue-600">Connect</span></h1>
           </div>
           
-          {/* Updated Breadcrumb / Title */}
+          {/* Breadcrumb / Title */}
           <div className="hidden lg:flex items-center text-slate-500 font-medium">
              <span className="text-slate-400">Doctor's</span>
              <ChevronRight className="w-4 h-4 mx-2" />
              <span className="text-slate-900 font-semibold">
-               {navItems.find(i => i.id === activeView)?.label}
+               {navItems.find(i => i.id === activeView)?.label || 'Dashboard Overview'}
              </span>
           </div>
 
@@ -109,7 +122,10 @@ export default function DoctorDashboard() {
               <p className="text-sm font-semibold text-slate-900">{mockDoctor.name}</p>
               <p className="text-xs text-slate-500">{mockDoctor.specialization}</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center border-2 border-teal-200 text-teal-700 font-bold overflow-hidden cursor-pointer hover:ring-2 hover:ring-teal-400 transition-all" onClick={() => setActiveView('PROFILE')}>
+            <div 
+              className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center border-2 border-teal-200 text-teal-700 font-bold overflow-hidden cursor-pointer hover:ring-2 hover:ring-teal-400 transition-all" 
+              onClick={() => handleNavigate('PROFILE')} // 4. UPDATED to handleNavigate
+            >
               {userAvatar ? (
                  <img src={userAvatar} alt="Doctor" className="w-full h-full object-cover" />
               ) : (
@@ -124,7 +140,7 @@ export default function DoctorDashboard() {
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => handleNavigate(item.id)} // 5. UPDATED to handleNavigate
               className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 activeView === item.id
                   ? 'bg-teal-50 text-teal-700 border border-teal-200'
@@ -139,7 +155,8 @@ export default function DoctorDashboard() {
 
         <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto bg-slate-50/50">
           <div key={activeView}>
-            {activeView === 'DASHBOARD' && <DashboardHome onNavigate={setActiveView} />}
+            {/* 6. UPDATED DashboardHome prop to handleNavigate */}
+            {activeView === 'DASHBOARD' && <DashboardHome onNavigate={handleNavigate} />}
             {activeView === 'TREATMENT_HISTORY' && <TreatmentHistoryView />}
             {activeView === 'TREATMENT_RECORDS' && <TreatmentRecordsView />}
             {activeView === 'MEDICATION_FLAGS' && <MedicationFlagView />}

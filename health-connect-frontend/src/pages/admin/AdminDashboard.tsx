@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Users, Stethoscope, AlertTriangle, UserCog, Activity, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import favicon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/admin.types';
@@ -12,7 +13,13 @@ import ManageUsersView from '../../components/admin/ManageUsersView';
 import AuditLogsView from '../../components/admin/AuditLogsView';
 
 export default function AdminDashboard() {
-  const [activeView, setActiveView] = useState<ViewState>('PATIENT_RECORDS');
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Extract the current view from the URL (e.g., /admin/patient_records -> 'PATIENT_RECORDS')
+  const urlPath = location.pathname.split('/')[2];
+  const activeView = (urlPath ? urlPath.toUpperCase() : 'PATIENT_RECORDS') as ViewState;
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [adminAvatar, setAdminAvatar] = useState<string | undefined>(mockAdmin.avatar);
 
@@ -24,6 +31,10 @@ export default function AdminDashboard() {
     { id: 'AUDIT_LOGS', label: 'Audit Logs', icon: Activity },
     { id: 'PROFILE', label: 'Admin Profile', icon: User },
   ] as const;
+
+  const handleNavigate = (view: string) => {
+    navigate(`/admin/${view.toLowerCase()}`);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
@@ -42,7 +53,6 @@ export default function AdminDashboard() {
         </button>
 
         <div className={`p-6 flex items-center gap-3 border-b border-slate-800 h-20 shrink-0 ${isSidebarOpen ? 'justify-start' : 'justify-center px-0'}`}>
-          {/* Custom Favicon Image Placeholder */}
           <div className="">
              <img src={favicon} alt="HealthConnect" className="w-10 h-10" />
           </div>
@@ -53,11 +63,11 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-8 space-y-2 overflow-y-auto hide-scrollbar">
+        <nav className="flex-1 px-3 py-8 space-y-2 overflow-y-auto hide-scrollbar overflow-x-hidden">
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => handleNavigate(item.id)}
               className={`w-full flex items-center group relative px-3 py-3.5 rounded-xl transition-all font-medium ${
                 activeView === item.id 
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20 scale-[1.02]' 
@@ -85,14 +95,14 @@ export default function AdminDashboard() {
         {/* Topbar */}
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-10">
           <div className="flex items-center gap-3 lg:hidden">
-            <img src="https://via.placeholder.com/32/2563eb/ffffff?text=HC" alt="Logo" className="w-8 h-8 rounded" />
-            <h1 className="text-xl font-bold text-slate-900">AdminPortal</h1>
+            <img src={favicon} alt="HealthConnect" className="w-10 h-10" />
+            <h1 className="text-xl font-bold text-slate-900">Health<span className="text-blue-600">Connect</span></h1>
           </div>
           
           <div className="hidden lg:flex items-center text-slate-500 font-medium">
              <span className="text-slate-400">System Admin</span>
              <ChevronRight className="w-4 h-4 mx-2" />
-             <span className="text-slate-900 font-semibold">{navItems.find(i => i.id === activeView)?.label}</span>
+             <span className="text-slate-900 font-semibold">{navItems.find(i => i.id === activeView)?.label || 'Dashboard'}</span>
           </div>
 
           <div className="flex items-center gap-4">
@@ -100,7 +110,10 @@ export default function AdminDashboard() {
               <p className="text-sm font-semibold text-slate-900">{mockAdmin.name}</p>
               <p className="text-xs text-blue-600 font-bold uppercase tracking-wider">Super Admin</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-200 text-slate-700 font-bold overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all" onClick={() => setActiveView('PROFILE')}>
+            <div 
+              className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-200 text-slate-700 font-bold overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all" 
+              onClick={() => handleNavigate('PROFILE')}
+            >
               {adminAvatar ? <img src={adminAvatar} alt="Admin" className="w-full h-full object-cover" /> : mockAdmin.name.charAt(0)}
             </div>
           </div>
@@ -111,7 +124,7 @@ export default function AdminDashboard() {
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => handleNavigate(item.id)}
               className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 activeView === item.id ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-600 hover:bg-slate-50'
               }`}

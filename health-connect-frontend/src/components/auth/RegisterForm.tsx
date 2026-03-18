@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
-import { User, Activity, Stethoscope, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
-import type { Role, AuthView } from '../../types/auth.types';
+import { useNavigate } from 'react-router-dom';
+import { User, Activity, Stethoscope, Shield, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import type { Role } from '../../types/auth.types';
 import { usePasswordStrength } from '../../hooks/usePasswordStrength';
 
-interface RegisterFormProps {
-  onNavigate: (view: AuthView) => void;
-}
-
-const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigate }) => {
+const RegisterForm: React.FC = () => {
+  const navigate = useNavigate();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [role, setRole] = useState<Role>('PATIENT');
@@ -26,7 +24,8 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigate }) => {
       return;
     }
     console.log('Register Submitted:', { firstName, lastName, role, email, password });
-    alert(`Registered successfully as ${role}!`);
+    alert(`Registered successfully as ${role}! Please log in.`);
+    navigate('/login');
   };
 
   return (
@@ -74,7 +73,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigate }) => {
 
         <div className="space-y-2 pt-2 pb-2">
           <label className="text-sm font-semibold text-slate-700 block">I am a...</label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <button
               type="button"
               onClick={() => setRole('PATIENT')}
@@ -98,6 +97,18 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigate }) => {
             >
               <Stethoscope className={`w-6 h-6 mb-1.5 ${role === 'DOCTOR' ? 'text-teal-500' : 'text-slate-400'}`} />
               <span className="text-xs font-semibold">Doctor</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole('ADMIN')}
+              className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
+                role === 'ADMIN' 
+                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700' 
+                  : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <Shield className={`w-6 h-6 mb-1.5 ${role === 'ADMIN' ? 'text-indigo-500' : 'text-slate-400'}`} />
+              <span className="text-xs font-semibold">Admin</span>
             </button>
           </div>
         </div>
@@ -201,7 +212,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigate }) => {
         <p className="text-sm text-slate-600">
           Already have an account?{' '}
           <button
-            onClick={() => onNavigate('login')}
+            onClick={() => navigate('/login')}
             className="font-bold text-blue-600 hover:text-blue-700 hover:underline transition-all"
           >
             Sign in

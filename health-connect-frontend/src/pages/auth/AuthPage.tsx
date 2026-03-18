@@ -1,30 +1,27 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Shield, Activity, Stethoscope } from 'lucide-react';
 import favIcon from '../../assets/logo-v1.png';
-import type { AuthView } from '../../types/auth.types';
 import LoginForm from '../../components/auth/LoginForm';
 import RegisterForm from '../../components/auth/RegisterForm';
 import ForgotPasswordForm from '../../components/auth/ForgotPasswordForm';
 
-// 1. Add props interface for AuthPage
 interface AuthPageProps {
-  onLogin: (role: string) => void;
+  onLogin?: (role: string) => void;
+  view: 'login' | 'register' | 'forgot-password';
 }
 
-const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
-  const [activeView, setActiveView] = useState<AuthView>('login');
-
+const AuthPage: React.FC<AuthPageProps> = ({ onLogin, view }) => {
+  
   const renderForm = () => {
-    switch (activeView) {
+    switch (view) {
       case 'login':
-        // 3. Pass onLogin down to LoginForm
-        return <LoginForm onNavigate={setActiveView} onLogin={onLogin} />;
+        return <LoginForm onLogin={onLogin!} />;
       case 'register':
-        return <RegisterForm onNavigate={setActiveView} />;
-      case 'forgot_password':
-        return <ForgotPasswordForm onNavigate={setActiveView} />;
+        return <RegisterForm />;
+      case 'forgot-password':
+        return <ForgotPasswordForm />;
       default:
-        return <LoginForm onNavigate={setActiveView} onLogin={onLogin} />;
+        return <LoginForm onLogin={onLogin!} />;
     }
   };
 
@@ -36,7 +33,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         <div className="w-full max-w-md mx-auto">
           
           {/* Logo / Header */}
-          <div className="flex items-center gap-0 mb-10">
+          <div className="flex items-center gap-2 mb-10">
             <div className="">
               <img src={favIcon} alt="Health Connect Logo" className="w-10 h-10" />
             </div>
