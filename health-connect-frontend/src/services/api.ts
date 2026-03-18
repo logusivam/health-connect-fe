@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:5000/api/v1';
+import { API_BASE_URL } from "../config/env";
 
 const getHeaders = () => {
   const token = localStorage.getItem('accessToken');
@@ -10,7 +10,7 @@ const getHeaders = () => {
 
 export const authApi = {
   login: async (data: any) => {
-    const res = await fetch(`${BASE_URL}/auth/login`, {
+    const res = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -20,7 +20,7 @@ export const authApi = {
 
   // ADDED: Register method
   register: async (data: any) => {
-    const res = await fetch(`${BASE_URL}/auth/register`, {
+    const res = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -31,11 +31,11 @@ export const authApi = {
 
 export const patientApi = {
   getProfile: async () => {
-    const res = await fetch(`${BASE_URL}/patients/profile`, { headers: getHeaders() });
+    const res = await fetch(`${API_BASE_URL}/patients/profile`, { headers: getHeaders() });
     return res.json();
   },
   updateProfile: async (data: any) => {
-    const res = await fetch(`${BASE_URL}/patients/profile`, {
+    const res = await fetch(`${API_BASE_URL}/patients/profile`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data),
