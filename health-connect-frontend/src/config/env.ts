@@ -1,7 +1,6 @@
 // Check if the app is running on localhost or a local network IP
 const isLocalhost = 
-  window.location.protocol === 'http' || 
-  window.location.protocol === '127.0.0.1';
+  window.location.protocol === 'http:';
 
 // Auto-switch the base URL based on the environment
 // Replace 'https://api.yourproductiondomain.com' with your actual backend domain when you deploy
