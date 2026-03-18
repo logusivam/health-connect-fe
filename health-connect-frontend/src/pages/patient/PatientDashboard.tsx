@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom'; // Add this line
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import favIcon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/patient.types';
-import { mockProfile } from '../../data/mockPatientData';
+import { patientApi } from '../../services/api';
 
 import Topbar from '../../components/patient/Topbar';
 import DashboardHome from '../../components/patient/DashboardHome';
@@ -16,15 +16,34 @@ export default function PatientDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Dynamically get the view from the URL (e.g., /patient/history -> 'HISTORY')
   const urlPath = location.pathname.split('/')[2];
   const activeView = (urlPath ? urlPath.toUpperCase() : 'DASHBOARD') as ViewState;
   
   const [highlightedRecordId, setHighlightedRecordId] = useState<string | null>(null);
-  const [userAvatar, setUserAvatar] = useState<string | undefined>(mockProfile.avatar);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // Reordered navigation items
+  // Global State for Topbar
+  const [userAvatar, setUserAvatar] = useState<string | undefined>(undefined);
+  const [userName, setUserName] = useState<string>('');
+  const [patientId, setPatientId] = useState<string>('');
+
+  // Fetch basic profile data on mount to populate the Topbar
+  useEffect(() => {
+    const initProfile = async () => {
+      try {
+        const res = await patientApi.getProfile();
+        if (res.success) {
+          setUserName(`${res.data.firstName} ${res.data.lastName}`);
+          setPatientId(res.data._id);
+          if (res.data.avatar) setUserAvatar(res.data.avatar);
+        }
+      } catch (err) {
+        console.error('Failed to load initial profile data', err);
+      }
+    };
+    initProfile();
+  }, []);
+
   const navItems = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'HISTORY', label: 'Treatment History', icon: ClipboardList },
@@ -34,7 +53,6 @@ export default function PatientDashboard() {
   ] as const;
 
   const handleNavigate = (view: ViewState, recordId?: string) => {
-    // Change the URL instead of just state
     navigate(`/patient/${view.toLowerCase()}`); 
     
     if (recordId) {
@@ -54,7 +72,6 @@ export default function PatientDashboard() {
           isSidebarOpen ? 'w-72' : 'w-20'
         }`}
       >
-        {/* Toggle Collapse Button */}
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="absolute -right-3 top-6 bg-slate-800 text-slate-300 p-1.5 rounded-full border border-slate-700 hover:text-white hover:bg-slate-700 transition-all z-20 shadow-md hover:scale-110"
@@ -90,7 +107,6 @@ export default function PatientDashboard() {
                 {item.label}
               </span>
 
-              {/* Tooltip for collapsed state */}
               {!isSidebarOpen && (
                  <div className="absolute left-full ml-4 px-3 py-2 bg-slate-800 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none translate-x-2 group-hover:translate-x-0 shadow-xl border border-slate-700">
                     {item.label}
@@ -104,6 +120,8 @@ export default function PatientDashboard() {
         <div className="p-4 border-t border-slate-800">
           <button 
             onClick={() => { 
+              localStorage.removeItem('accessToken');
+              localStorage.removeItem('refreshToken');
               localStorage.removeItem('userRole');
               window.location.href = '/login';
             }}
@@ -115,7 +133,6 @@ export default function PatientDashboard() {
               Sign Out
             </span>
 
-            {/* Tooltip for collapsed state */}
             {!isSidebarOpen && (
                <div className="absolute left-full ml-4 px-3 py-2 bg-slate-800 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none translate-x-2 group-hover:translate-x-0 shadow-xl border border-slate-700">
                   Sign Out
@@ -128,7 +145,9 @@ export default function PatientDashboard() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Topbar avatar={userAvatar} />
+        
+        {/* Pass the globally fetched data to Topbar */}
+        <Topbar avatar={userAvatar} name={userName} patientId={patientId} />
         
         {/* Mobile Navigation (Simple Tab Bar) */}
         <div className="lg:hidden bg-white border-b border-slate-200 px-4 py-2 flex overflow-x-auto hide-scrollbar sticky top-16 z-10 transition-all">
@@ -149,13 +168,23 @@ export default function PatientDashboard() {
         </div>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto bg-slate-50/50">
-          {/* Main content wrapper with mount animation keys */}
           <div key={activeView} className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both">
             {activeView === 'DASHBOARD' && <DashboardHome onNavigate={handleNavigate} />}
             {activeView === 'HISTORY' && <TreatmentHistoryView highlightedRecordId={highlightedRecordId} />}
             {activeView === 'UNSUITABLE_MEDICINE' && <UnsuitableMedicineView />}
             {activeView === 'BOOK_APPOINTMENT' && <BookAppointmentView />}
-            {activeView === 'PROFILE' && <ProfileView avatar={userAvatar} onAvatarChange={setUserAvatar} />}
+            
+            {/* Provide callback to sync changes */}
+            {activeView === 'PROFILE' && (
+              <ProfileView 
+                avatar={userAvatar} 
+                onAvatarChange={setUserAvatar} 
+                onProfileLoaded={(name, id) => {
+                  setUserName(name);
+                  setPatientId(id);
+                }}
+              />
+            )}
           </div>
         </main>
       </div>

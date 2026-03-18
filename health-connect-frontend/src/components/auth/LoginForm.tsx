@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import type { Role } from '../../types/auth.types';
+import { authApi } from '../../services/api';
 
 interface LoginFormProps {
   onLogin: (role: Role) => void; 
@@ -15,15 +16,32 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((role === 'DOCTOR' || role === 'ADMIN') && otp.length < 6) {
       alert("Please enter a valid 6-digit OTP.");
       return;
     }
-    console.log('Login Submitted:', { email, password, role, ...((role === 'DOCTOR' || role === 'ADMIN') && { otp }) });
-    onLogin(role); 
+
+    setIsLoading(true);
+    try {
+      const response = await authApi.login({ email, password, role});
+
+      if (response.success) {
+        localStorage.setItem('accessToken', response.data.accessToken);
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+
+        onLogin(role);
+      } else {
+        alert(response.message || 'Login failed. Please try again.');
+      }
+    } catch (error) {
+      alert('An error occurred during login. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const requiresOtp = role === 'DOCTOR' || role === 'ADMIN';
