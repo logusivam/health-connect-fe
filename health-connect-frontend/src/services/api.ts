@@ -16,6 +16,16 @@ export const authApi = {
       body: JSON.stringify(data),
     });
     return res.json();
+  },
+
+  // ADDED: Register method
+  register: async (data: any) => {
+    const res = await fetch(`${BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
   }
 };
 

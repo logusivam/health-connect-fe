@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { User, Activity, Stethoscope, Shield, Mail, Lock, Eye, EyeOff, ArrowRight, Calendar, Phone, Droplet } from 'lucide-react';
 import type { Role } from '../../types/auth.types';
 import { usePasswordStrength } from '../../hooks/usePasswordStrength';
+import { authApi } from '../../services/api'; // ADDED: Import the API service
 
 const RegisterForm: React.FC = () => {
   const navigate = useNavigate();
@@ -38,23 +39,18 @@ const RegisterForm: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/v1/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          role,
-          firstName,
-          lastName,
-          dob,
-          gender,
-          phone,
-          bloodGroup
-        }),
+      // UPDATED: Using the centralized authApi service
+      const data = await authApi.register({
+        email,
+        password,
+        role,
+        firstName,
+        lastName,
+        dob,
+        gender,
+        phone,
+        bloodGroup
       });
-
-      const data = await response.json();
 
       if (data.success) {
         alert(`Registered successfully as ${role}! Please log in.`);
