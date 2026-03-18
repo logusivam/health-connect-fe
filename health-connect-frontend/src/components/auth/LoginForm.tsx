@@ -30,9 +30,6 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
       const response = await authApi.login({ email, password, role});
 
       if (response.success) {
-        localStorage.setItem('accessToken', response.data.accessToken);
-        localStorage.setItem('refreshToken', response.data.refreshToken);
-
         onLogin(role);
       } else {
         alert(response.message || 'Login failed. Please try again.');

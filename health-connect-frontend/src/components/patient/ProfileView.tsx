@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LogOut, Camera, Edit2, Save, X } from 'lucide-react';
 import { patientApi } from '../../services/api';
+import { authApi } from '../../services/api';
 
 interface ProfileViewProps {
   avatar?: string;
@@ -223,12 +224,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
 
       <div className="flex justify-center pt-4 pb-8">
         <button 
-          onClick={() => { 
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('userRole');
-            window.location.href = '/login';
-          }} 
+          onClick={async () => { 
+    await authApi.logout(); // Tells backend to destroy cookies
+    window.location.href = '/login'; // Hard redirect to clear React state
+  }}
           className="flex items-center gap-2 px-6 py-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl font-semibold transition-all hover:scale-105 active:scale-95"
         >
           <LogOut className="w-5 h-5" /> Log Out

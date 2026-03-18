@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import v1Routes from './routes/v1/index.js';
 
 const app = express();
@@ -41,6 +42,7 @@ app.use(cors(corsOptions));
 
 // Parses incoming JSON requests (increased limit for base64 image uploads)
 app.use(express.json({ limit: '10mb' })); 
+app.use(cookieParser());
 
 // Mount V1 API Routes
 app.use('/api/v1', v1Routes);

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, ChevronLeft, ChevronRight, AlertCircle, Import } from 'lucide-react';
 import favIcon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/patient.types';
-import { patientApi } from '../../services/api';
+import { authApi, patientApi } from '../../services/api';
 
 import Topbar from '../../components/patient/Topbar';
 import DashboardHome from '../../components/patient/DashboardHome';
@@ -119,12 +119,10 @@ export default function PatientDashboard() {
 
         <div className="p-4 border-t border-slate-800">
           <button 
-            onClick={() => { 
-              localStorage.removeItem('accessToken');
-              localStorage.removeItem('refreshToken');
-              localStorage.removeItem('userRole');
-              window.location.href = '/login';
-            }}
+            onClick={async () => { 
+    await authApi.logout(); // Tells backend to destroy cookies
+    window.location.href = '/login'; // Hard redirect to clear React state
+  }}
             className={`w-full flex items-center group relative px-3 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors font-medium ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}
           >
             <LogOut className={`w-5 h-5 shrink-0 transition-all duration-300 ${isSidebarOpen ? 'mr-3' : 'mr-0'}`} />
