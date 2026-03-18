@@ -65,7 +65,7 @@ export default function DoctorDashboard() {
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-8 space-y-2 overflow-y-auto hide-scrollbar">
+        <nav className="flex-1 px-3 py-8 space-y-2 overflow-y-auto hide-scrollbar overflow-x-hidden">
           {navItems.map((item) => (
             <button
               key={item.id}
