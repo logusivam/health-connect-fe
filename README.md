@@ -39,36 +39,72 @@ production system.
 ```
 health-connect-fe/
 ├── health-connect-frontend/        # actual SPA
-│   ├── public/                     # static assets (favicons, robots.txt)
+│   ├── public/                     # static assets (favicons, logos)
+│   │   ├── favicon-48.png
+│   │   ├── favicon-96.png
+│   │   ├── favicon-180.png
+│   │   ├── logo-v1.png
+│   │   └── vite.svg
 │   ├── src/
+│   │   ├── assets/                 # imported assets (logos, react.svg)
+│   │   │   ├── favicon-48.png
+│   │   │   ├── logo-v1.png
+│   │   │   └── react.svg
 │   │   ├── components/
+│   │   │   ├── admin/
+│   │   │   │   ├── AdminProfileView.tsx
+│   │   │   │   ├── AuditLogsView.tsx
+│   │   │   │   ├── DoctorRecordsView.tsx
+│   │   │   │   ├── ManageUsersView.tsx
+│   │   │   │   ├── PageHeader.tsx
+│   │   │   │   ├── PatientRecordsView.tsx
+│   │   │   │   └── UnsuitableMedicineAdminView.tsx
 │   │   │   ├── auth/
+│   │   │   │   ├── AuthLayout.tsx
+│   │   │   │   ├── ForgotPasswordForm.tsx
 │   │   │   │   ├── LoginForm.tsx
-│   │   │   │   ├── RegisterForm.tsx
-│   │   │   │   └── ForgotPasswordForm.tsx
-│   │   │   ├── patient/
-│   │   │   │   ├── BookAppointmentView.tsx
+│   │   │   │   └── RegisterForm.tsx
+│   │   │   ├── doctor/
 │   │   │   │   ├── DashboardHome.tsx
-│   │   │   │   ├── ProfileView.tsx
+│   │   │   │   ├── DoctorProfileView.tsx
+│   │   │   │   ├── MedicationFlagView.tsx
 │   │   │   │   ├── TreatmentHistoryView.tsx
-│   │   │   │   ├── UnsuitableMedicineView.tsx
-│   │   │   │   └── Topbar.tsx
+│   │   │   │   └── TreatmentRecordsView.tsx
+│   │   │   └── patient/
+│   │   │       ├── BookAppointmentView.tsx
+│   │   │       ├── DashboardHome.tsx
+│   │   │       ├── ProfileView.tsx
+│   │   │       ├── Topbar.tsx
+│   │   │       ├── TreatmentHistoryView.tsx
+│   │   │       └── UnsuitableMedicineView.tsx
 │   │   ├── data/
+│   │   │   ├── mockAdminData.ts
+│   │   │   ├── mockDoctorData.ts
 │   │   │   └── mockPatientData.ts
 │   │   ├── hooks/
 │   │   │   └── usePasswordStrength.ts
 │   │   ├── pages/
+│   │   │   ├── admin/
+│   │   │   │   └── AdminDashboard.tsx
 │   │   │   ├── auth/
 │   │   │   │   └── AuthPage.tsx
+│   │   │   ├── doctor/
+│   │   │   │   └── DoctorDashboard.tsx
 │   │   │   └── patient/
 │   │   │       └── PatientDashboard.tsx
 │   │   ├── routes/
 │   │   │   └── AppRouter.tsx
 │   │   ├── styles/
 │   │   │   └── index.css
-│   │   └── types/
-│   │       ├── auth.types.ts
-│   │       └── patient.types.ts
+│   │   ├── types/
+│   │   │   ├── admin.types.ts
+│   │   │   ├── auth.types.ts
+│   │   │   ├── doctor.types.ts
+│   │   │   └── patient.types.ts
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── index.css
+│   │   └── main.tsx
 │   ├── index.html
 │   ├── package.json
 │   ├── package-lock.json
