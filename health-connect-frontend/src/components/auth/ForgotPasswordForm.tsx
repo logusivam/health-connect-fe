@@ -29,7 +29,8 @@ const ForgotPasswordForm: React.FC = () => {
 
   // 90-Second Countdown Timer
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    // Let TypeScript automatically infer the correct environment type
+    let timer: ReturnType<typeof setInterval>;
     if (countdown > 0) {
       timer = setInterval(() => setCountdown(c => c - 1), 1000);
     }
