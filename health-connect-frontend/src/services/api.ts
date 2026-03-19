@@ -15,6 +15,10 @@ export const authApi = {
   register: (data: any) => fetchWithCookies('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
   logout: () => fetchWithCookies('/auth/logout', { method: 'POST' }),
   getMe: () => fetchWithCookies('/auth/me', { method: 'GET' }),
+  // ... forget password routes ...
+  sendResetOtp: (data: { email: string, role: string }) => fetchWithCookies('/auth/forgot-password/send-otp', { method: 'POST', body: JSON.stringify(data) }),
+  verifyResetOtp: (data: { email: string, otp: string }) => fetchWithCookies('/auth/forgot-password/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
+  resetPassword: (data: any) => fetchWithCookies('/auth/forgot-password/reset', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export const patientApi = {

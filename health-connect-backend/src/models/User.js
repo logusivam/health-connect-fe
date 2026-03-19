@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   failed_login_count: { type: Number, default: 0 },
   mfa_enabled: { type: Boolean, default: false },
   last_login_at: { type: Date },
+  password_updated_at: { type: Date },
   is_deleted: { type: Boolean, default: false } // Soft delete
 }, { timestamps: true });
 
@@ -43,6 +44,7 @@ userSchema.pre('save', async function (next) {
   try {
     const salt = await bcrypt.genSalt(10);
     doc.password = await bcrypt.hash(doc.password, salt);
+    doc.password_updated_at = new Date();
     next();
   } catch (error) {
     next(error);

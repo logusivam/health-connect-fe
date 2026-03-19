@@ -13,8 +13,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Edit States for inline editing
-  const [editField, setEditField] = useState<'address' | 'emergencyContactName' | 'emergencyContactPhone' | null>(null);
+  // Expanded Edit States to include email and phone
+  const [editField, setEditField] = useState<'address' | 'emergencyContactName' | 'emergencyContactPhone' | 'email' | 'phone' | null>(null);
   const [editValue, setEditValue] = useState('');
 
   useEffect(() => {
@@ -57,11 +57,21 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
   const handleSaveEdit = async () => {
     if (!editField) return;
     
+    // Keep old value in case API fails (like duplicate email)
+    const originalValue = profile[editField];
+    
     // Optimistic update
     setProfile((prev: any) => ({ ...prev, [editField]: editValue }));
     
     // Save to backend
-    await patientApi.updateProfile({ [editField]: editValue });
+    const res = await patientApi.updateProfile({ [editField]: editValue });
+    
+    if (!res.success) {
+      alert(res.message || "Failed to update field.");
+      // Rollback on failure
+      setProfile((prev: any) => ({ ...prev, [editField]: originalValue }));
+    }
+    
     setEditField(null);
   };
 
@@ -121,13 +131,47 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
             <div className="group">
               <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2 group-hover:text-blue-500 transition-colors">Contact Information</h4>
               <div className="space-y-4 text-sm">
+                
+                {/* Editable Email */}
                 <div>
-                  <p className="text-slate-500 mb-0.5">Email Address</p>
-                  <p className="font-medium text-slate-900">{profile.email}</p>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-slate-500">Email Address</p>
+                    {editField !== 'email' && (
+                      <button onClick={() => startEdit('email', profile.email)} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {editField === 'email' ? (
+                    <div className="flex gap-2">
+                      <input type="email" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-slate-900">{profile.email}</p>
+                  )}
                 </div>
+
+                {/* Editable Phone */}
                 <div>
-                  <p className="text-slate-500 mb-0.5">Phone Number</p>
-                  <p className="font-medium text-slate-900">{profile.phone}</p>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-slate-500">Phone Number</p>
+                    {editField !== 'phone' && (
+                      <button onClick={() => startEdit('phone', profile.phone)} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {editField === 'phone' ? (
+                    <div className="flex gap-2">
+                      <input type="tel" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-slate-900">{profile.phone}</p>
+                  )}
                 </div>
                 
                 {/* Editable Address */}
@@ -225,9 +269,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
       <div className="flex justify-center pt-4 pb-8">
         <button 
           onClick={async () => { 
-    await authApi.logout(); // Tells backend to destroy cookies
-    window.location.href = '/login'; // Hard redirect to clear React state
-  }}
+            await authApi.logout(); 
+            window.location.href = '/login'; 
+          }}
           className="flex items-center gap-2 px-6 py-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl font-semibold transition-all hover:scale-105 active:scale-95"
         >
           <LogOut className="w-5 h-5" /> Log Out

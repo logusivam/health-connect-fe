@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import Otp from '../../models/Otp.js';
+import { sendOtpEmail } from '../../utils/email.js';
 import User from '../../models/User.js';
 import PatientProfile from '../../models/PatientProfile.js';
 
@@ -119,3 +121,77 @@ export const getMe = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+// 1. Send OTP
+export const sendPasswordResetOtp = async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    
+    // Check if user exists with exact email and role
+    const user = await User.findOne({ email, role, is_deleted: false });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No account found with this email and role combination.' });
+    }
+
+    // Generate 6-digit OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Save to DB (overwrites existing if any)
+    await Otp.findOneAndDelete({ email });
+    await Otp.create({ email, otp: otpCode });
+
+    // Send HTTPS Email
+    await sendOtpEmail(email, otpCode);
+
+    res.status(200).json({ success: true, message: 'OTP sent successfully.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to send OTP.' });
+  }
+};
+
+// 2. Verify OTP Automatically
+export const verifyPasswordResetOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const otpRecord = await Otp.findOne({ email, otp });
+    
+    if (!otpRecord) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP.' });
+    }
+    
+    res.status(200).json({ success: true, message: 'OTP Verified.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+// 3. Reset Password
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, role, otp, newPassword } = req.body;
+
+    // Final security check
+    const otpRecord = await Otp.findOne({ email, otp });
+    if (!otpRecord) {
+      return res.status(400).json({ success: false, message: 'OTP verification failed or expired.' });
+    }
+
+    const user = await User.findOne({ email, role });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    // Update password (pre-save hook will automatically hash it and update password_updated_at)
+    user.password = newPassword;
+    await user.save();
+
+    // Clean up OTP
+    await Otp.deleteOne({ email });
+
+    res.status(200).json({ success: true, message: 'Password updated successfully.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error during password reset.' });
+  }
+};
+
+
+
