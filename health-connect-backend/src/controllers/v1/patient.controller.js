@@ -18,7 +18,7 @@ export const getPatientProfile = async (req, res) => {
 // PUT /api/v1/patients/profile
 export const updatePatientProfile = async (req, res) => {
   try {
-    const { address, emergencyContactName, emergencyContactPhone, avatarBase64, phone, email } = req.body;
+    const { address, emergencyContactName, emergencyContactPhone, avatarBase64, phone, email, firstName, lastName } = req.body;
     
     // 1. Update Patient Profile fields
     const profileUpdateData = {};
@@ -26,6 +26,10 @@ export const updatePatientProfile = async (req, res) => {
     if (emergencyContactName !== undefined) profileUpdateData.emergencyContactName = emergencyContactName;
     if (emergencyContactPhone !== undefined) profileUpdateData.emergencyContactPhone = emergencyContactPhone;
     if (phone !== undefined) profileUpdateData.phone = phone;
+    // NEW: Allow updating name
+    if (firstName !== undefined) profileUpdateData.firstName = firstName;
+    if (lastName !== undefined) profileUpdateData.lastName = lastName;
+    
     if (avatarBase64) profileUpdateData.avatar = avatarBase64;
 
     if (Object.keys(profileUpdateData).length > 0) {
@@ -37,7 +41,6 @@ export const updatePatientProfile = async (req, res) => {
 
     // 2. Update User model field (Email)
     if (email !== undefined) {
-      // Prevent updating to an email that is already taken by another user
       const existingUser = await User.findOne({ email: email.toLowerCase(), _id: { $ne: req.user.id } });
       if (existingUser) {
         return res.status(400).json({ success: false, message: 'This email is already in use by another account.' });
