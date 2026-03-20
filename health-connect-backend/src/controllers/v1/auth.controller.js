@@ -4,6 +4,7 @@ import Otp from '../../models/Otp.js';
 import { sendOtpEmail } from '../../utils/email.js';
 import User from '../../models/User.js';
 import PatientProfile from '../../models/PatientProfile.js';
+import DoctorProfile from '../../models/DoctorProfile.js';
 
 // Cookie configuration
 const cookieOptions = {
@@ -17,7 +18,6 @@ export const registerUser = async (req, res) => {
   try {
     const { email, password, role, firstName, lastName, dob, gender, phone, bloodGroup } = req.body;
 
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'Email already registered.' });
@@ -27,29 +27,33 @@ export const registerUser = async (req, res) => {
     const newUser = new User({ email, password, role });
     const savedUser = await newUser.save();
 
-    // 2. Create Role-Specific Profile (Patient)
+    // 2. Create Patient Profile
     if (role === 'PATIENT') {
       const newPatient = new PatientProfile({
         user_id: savedUser._id,
-        firstName,
-        lastName,
-        dob,
-        gender,
-        phone,
+        firstName, lastName, dob, gender, phone,
         bloodGroup: bloodGroup || 'Not specified'
       });
       await newPatient.save();
     }
 
-    // NOTE: You would add similar logic here for DOCTOR or ADMIN profiles later
+    // 3. NEW: Create Doctor Profile
+    if (role === 'DOCTOR') {
+      const newDoctor = new DoctorProfile({
+        user_id: savedUser._id,
+        firstName,
+        lastName,
+        registrationNumber: phone, // As requested
+        contactEmail: email,       // As requested
+        contactPhone: phone        // As requested
+      });
+      await newDoctor.save();
+    }
 
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      data: {
-        userId: savedUser._id,
-        role: savedUser.role
-      }
+      data: { userId: savedUser._id, role: savedUser.role }
     });
 
   } catch (error) {
