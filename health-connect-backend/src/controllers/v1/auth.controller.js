@@ -60,11 +60,21 @@ export const registerUser = async (req, res) => {
 
 export const loginUser = async (req, res) => {
   try {
-    const { email, password, role } = req.body;
+    const { email, password, role, otp } = req.body;
 
     const user = await User.findOne({ email, role, is_deleted: false });
     if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials or role.' });
     if (user.is_locked) return res.status(403).json({ success: false, message: 'Account locked.' });
+
+    // MFA Check for Doctor/Admin
+    if (user.mfa_enabled) {
+      if (!otp) return res.status(400).json({ success: false, message: 'OTP required.' });
+      const otpRecord = await Otp.findOne({ email: email.toLowerCase(), otp });
+      if (!otpRecord) return res.status(400).json({ success: false, message: 'Wrong or expired OTP.' });
+      
+      // Cleanup OTP after successful use
+      await Otp.deleteOne({ email: email.toLowerCase() });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
@@ -75,6 +85,8 @@ export const loginUser = async (req, res) => {
     }
 
     user.failed_login_count = 0;
+    user.mfa_send_count = 0; // Reset OTP send count on successful login
+    user.mfa_blocked_until = null; // Clear any OTP blocks
     user.last_login_at = new Date();
     await user.save();
 
@@ -193,5 +205,60 @@ export const resetPassword = async (req, res) => {
   }
 };
 
+// NEW: Send Login OTP with Progressive Cooldown
+export const sendLoginOtp = async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    
+    const user = await User.findOne({ email: email.toLowerCase(), role, is_deleted: false });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Role and email doesn't match" });
+    }
 
+    // Check if blocked
+    if (user.mfa_blocked_until && user.mfa_blocked_until > new Date()) {
+      const hoursLeft = Math.ceil((user.mfa_blocked_until - new Date()) / (1000 * 60 * 60));
+      return res.status(403).json({ success: false, message: `Too many attempts. Blocked for ${hoursLeft} hours.` });
+    }
+
+    // Progressive Cooldown Logic
+    user.mfa_send_count += 1;
+    let cooldown = 90;
+
+    if (user.mfa_send_count === 2) cooldown = 120;
+    else if (user.mfa_send_count === 3) cooldown = 150;
+    else if (user.mfa_send_count > 3) {
+      // 6 Hour Block
+      user.mfa_blocked_until = new Date(Date.now() + 6 * 60 * 60 * 1000);
+      await user.save();
+      return res.status(403).json({ success: false, message: 'Too many attempts. Disabled for 6 hours.' });
+    }
+
+    await user.save();
+
+    // Generate & Send
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    await Otp.findOneAndDelete({ email: email.toLowerCase() });
+    await Otp.create({ email: email.toLowerCase(), otp: otpCode });
+    await sendOtpEmail(email, otpCode);
+
+    res.status(200).json({ success: true, message: 'OTP sent successfully', cooldown });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to send OTP.' });
+  }
+};
+
+// NEW: Verify OTP on the fly (Auto-Verify)
+export const verifyLoginOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const otpRecord = await Otp.findOne({ email: email.toLowerCase(), otp });
+    
+    if (!otpRecord) return res.status(400).json({ success: false, message: 'Wrong OTP' });
+    
+    res.status(200).json({ success: true, message: 'OTP verified successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
 
