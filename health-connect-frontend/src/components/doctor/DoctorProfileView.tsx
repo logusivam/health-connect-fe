@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Clock, LogOut, Edit2, Save, X } from 'lucide-react';
+import { Camera, Clock, LogOut, Edit2, Save, X, AlertCircle } from 'lucide-react';
 import { doctorApi, authApi } from '../../services/api';
 
 interface DoctorProfileViewProps {
   avatar?: string;
   onAvatarChange: (url: string) => void;
-  onProfileUpdate?: (name: string, specialization: string) => void; // ADDED
+  onProfileUpdate?: (name: string, specialization: string) => void; 
 }
 
 const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarChange, onProfileUpdate }) => {
@@ -15,6 +15,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
   const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editValueLast, setEditValueLast] = useState('');
+  const [avatarError, setAvatarError] = useState<string>(''); // For 4MB limit error
 
   useEffect(() => {
     fetchProfile();
@@ -38,16 +39,44 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        onAvatarChange(base64String);
-        setProfile((prev: any) => ({ ...prev, avatar: base64String }));
-        await doctorApi.updateProfile({ avatarBase64: base64String });
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    setAvatarError(''); // Clear previous errors
+
+    // 1. Check File Size (Limit: 4MB)
+    const MAX_SIZE = 4 * 1024 * 1024; // 4MB in bytes
+    if (file.size > MAX_SIZE) {
+      setAvatarError('Image is too large. Must be less than 4MB.');
+      return;
     }
+
+    // 2. Convert Image to WebP using Canvas
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+        
+        // Output as WebP format with 0.8 quality
+        const webpBase64 = canvas.toDataURL('image/webp', 0.8);
+
+        // Optimistic UI update
+        onAvatarChange(webpBase64);
+        setProfile((prev: any) => ({ ...prev, avatar: webpBase64 }));
+        
+        // Save to backend immediately
+        await doctorApi.updateProfile({ avatarBase64: webpBase64 });
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   const startEdit = (field: string) => {
@@ -106,20 +135,30 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
         <div className="px-8 pb-8 flex flex-col items-center -mt-16 relative z-10">
           
           {/* Avatar Upload Container */}
-          <div className="relative group w-32 h-32 rounded-full bg-white p-1.5 shadow-xl mb-4">
-            <div className="w-full h-full rounded-full overflow-hidden relative">
-               {profile.avatar || avatar ? (
-                  <img src={profile.avatar || avatar} alt="Doctor" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                ) : (
-                  <div className="w-full h-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-4xl transition-transform duration-300 group-hover:scale-105">
-                    {profile.firstName.charAt(0)}
-                  </div>
-                )}
-                <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 cursor-pointer transition-all duration-300">
-                  <Camera className="w-8 h-8" />
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                </label>
+          <div className="flex flex-col items-center">
+            <div className="relative group w-32 h-32 rounded-full bg-white p-1.5 shadow-xl mb-4">
+              <div className="w-full h-full rounded-full overflow-hidden relative">
+                 {profile.avatar || avatar ? (
+                    <img src={profile.avatar || avatar} alt="Doctor" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                  ) : (
+                    <div className="w-full h-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-4xl transition-transform duration-300 group-hover:scale-105">
+                      {profile.firstName.charAt(0)}
+                    </div>
+                  )}
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 cursor-pointer transition-all duration-300">
+                    <Camera className="w-8 h-8" />
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                  </label>
+              </div>
             </div>
+            
+            {/* Display 4MB Error Message */}
+            {avatarError && (
+              <p className="text-red-500 text-xs font-semibold mb-4 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {avatarError}
+              </p>
+            )}
           </div>
           
           {/* Editable Name */}
