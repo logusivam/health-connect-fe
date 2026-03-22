@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Users, Stethoscope, AlertTriangle, UserCog, Activity, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import favicon from '../../assets/logo-v1.png';

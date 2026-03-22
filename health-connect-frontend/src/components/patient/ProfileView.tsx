@@ -1,20 +1,136 @@
-import React from 'react';
-import { LogOut, Camera } from 'lucide-react';
-import { mockProfile } from '../../data/mockPatientData';
+import React, { useState, useEffect } from 'react';
+import { LogOut, Camera, Edit2, Save, X, AlertCircle } from 'lucide-react';
+import { patientApi } from '../../services/api';
+import { authApi } from '../../services/api';
 
 interface ProfileViewProps {
   avatar?: string;
   onAvatarChange: (url: string) => void;
+  onProfileLoaded?: (name: string, id: string) => void; 
 }
 
-const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange }) => {
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const imageUrl = URL.createObjectURL(file);
-      onAvatarChange(imageUrl);
+const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onProfileLoaded }) => {
+  const [profile, setProfile] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Edit States for inline editing
+  const [editField, setEditField] = useState<'address' | 'emergencyContactName' | 'emergencyContactPhone' | 'email' | 'phone' | 'name' | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editValueLast, setEditValueLast] = useState(''); // Specifically for last name
+  const [avatarError, setAvatarError] = useState<string>(''); // For 4MB limit error
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const res = await patientApi.getProfile();
+      if (res.success) {
+        setProfile(res.data);
+        
+        // Sync parent states
+        if (res.data.avatar) onAvatarChange(res.data.avatar);
+        if (onProfileLoaded) onProfileLoaded(`${res.data.firstName} ${res.data.lastName}`, res.data._id);
+      }
+    } catch (error) {
+      console.error("Failed to fetch profile");
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAvatarError(''); // Clear previous errors
+
+    // 1. Check File Size (Limit: 4MB)
+    const MAX_SIZE = 4 * 1024 * 1024; // 4MB in bytes
+    if (file.size > MAX_SIZE) {
+      setAvatarError('Image is too large. Must be less than 4MB.');
+      return;
+    }
+
+    // 2. Convert Image to WebP using Canvas
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+        
+        // Output as WebP format with 0.8 quality
+        const webpBase64 = canvas.toDataURL('image/webp', 0.8);
+
+        // Optimistic UI update
+        onAvatarChange(webpBase64);
+        setProfile((prev: any) => ({ ...prev, avatar: webpBase64 }));
+        
+        // Save to backend immediately
+        await patientApi.updateProfile({ avatarBase64: webpBase64 });
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editField) return;
+
+    if (editField === 'name') {
+      const originalFirst = profile.firstName;
+      const originalLast = profile.lastName;
+
+      setProfile((prev: any) => ({ ...prev, firstName: editValue, lastName: editValueLast }));
+
+      const res = await patientApi.updateProfile({ firstName: editValue, lastName: editValueLast });
+      
+      if (!res.success) {
+        alert(res.message || "Failed to update name.");
+        setProfile((prev: any) => ({ ...prev, firstName: originalFirst, lastName: originalLast }));
+      } else {
+        if (onProfileLoaded) onProfileLoaded(`${editValue} ${editValueLast}`, profile._id);
+      }
+    } else {
+      // Keep old value in case API fails (like duplicate email)
+      const originalValue = profile[editField];
+      
+      // Optimistic update
+      setProfile((prev: any) => ({ ...prev, [editField]: editValue }));
+      
+      // Save to backend
+      const res = await patientApi.updateProfile({ [editField]: editValue });
+      
+      if (!res.success) {
+        alert(res.message || "Failed to update field.");
+        // Rollback on failure
+        setProfile((prev: any) => ({ ...prev, [editField]: originalValue }));
+      }
+    }
+    
+    setEditField(null);
+  };
+
+  const startEdit = (field: any) => {
+    setEditField(field);
+    if (field === 'name') {
+      setEditValue(profile.firstName);
+      setEditValueLast(profile.lastName);
+    } else {
+      setEditValue(profile[field] || '');
+    }
+  };
+
+  if (isLoading) return <div className="text-center py-20 text-slate-500">Loading profile data...</div>;
+  if (!profile) return <div className="text-center py-20 text-red-500">Failed to load profile data.</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -30,28 +146,56 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange }) => 
         <div className="px-8 py-8 border-b border-slate-100 flex flex-col sm:flex-row items-center sm:items-start gap-6 bg-slate-50/50">
           
           {/* Avatar Upload Container */}
-          <div className="relative group">
-            {avatar ? (
-              <img src={avatar} alt="Profile" className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md transition-transform duration-300 group-hover:scale-105" />
-            ) : (
-              <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center border-4 border-white shadow-md text-blue-700 font-bold text-3xl transition-transform duration-300 group-hover:scale-105">
-                {mockProfile.name.charAt(0)}
-              </div>
-            )}
+          <div className="flex flex-col items-center">
+            <div className="relative group">
+              {profile.avatar || avatar ? (
+                <img src={profile.avatar || avatar} alt="Profile" className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md transition-transform duration-300 group-hover:scale-105" />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center border-4 border-white shadow-md text-blue-700 font-bold text-3xl transition-transform duration-300 group-hover:scale-105">
+                  {profile.firstName.charAt(0)}
+                </div>
+              )}
+              
+              <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-all duration-300 scale-95 group-hover:scale-105">
+                <Camera className="w-6 h-6" />
+                <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+              </label>
+            </div>
             
-            <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-all duration-300 scale-95 group-hover:scale-105">
-              <Camera className="w-6 h-6" />
-              <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-            </label>
+            {/* Display 4MB Error Message */}
+            {avatarError && (
+              <p className="text-red-500 text-xs font-semibold mt-3 flex items-center gap-1 max-w-[120px] text-center leading-tight">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {avatarError}
+              </p>
+            )}
           </div>
 
           <div className="text-center sm:text-left pt-2">
-            <h3 className="text-2xl font-bold text-slate-900">{mockProfile.name}</h3>
-            <p className="text-blue-600 font-medium">{mockProfile.id}</p>
+            {/* Editable Name Section */}
+            <div className="flex items-center gap-3 mb-1 group">
+              {editField === 'name' ? (
+                <div className="flex items-center gap-2">
+                  <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="px-3 py-1 border rounded-lg text-lg font-bold w-32 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="First Name" />
+                  <input type="text" value={editValueLast} onChange={(e) => setEditValueLast(e.target.value)} className="px-3 py-1 border rounded-lg text-lg font-bold w-32 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Last Name" />
+                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-2xl font-bold text-slate-900">{profile.firstName} {profile.lastName}</h3>
+                  <button onClick={() => startEdit('name')} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-700">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+            </div>
+
+            <p className="text-blue-600 font-medium">{profile._id}</p>
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
-              <span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 text-xs rounded-full font-medium">Blood: {mockProfile.bloodGroup}</span>
-              <span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 text-xs rounded-full font-medium">{mockProfile.gender}</span>
-              <span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 text-xs rounded-full font-medium">DOB: {mockProfile.dob}</span>
+              <span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 text-xs rounded-full font-medium">Blood: {profile.bloodGroup || 'N/A'}</span>
+              <span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 text-xs rounded-full font-medium">{profile.gender}</span>
+              <span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 text-xs rounded-full font-medium">DOB: {new Date(profile.dob).toLocaleDateString()}</span>
             </div>
           </div>
         </div>
@@ -64,17 +208,68 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange }) => 
             <div className="group">
               <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2 group-hover:text-blue-500 transition-colors">Contact Information</h4>
               <div className="space-y-4 text-sm">
+                
+                {/* Editable Email */}
                 <div>
-                  <p className="text-slate-500 mb-0.5">Email Address</p>
-                  <p className="font-medium text-slate-900">{mockProfile.email}</p>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-slate-500">Email Address</p>
+                    {editField !== 'email' && (
+                      <button onClick={() => startEdit('email')} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {editField === 'email' ? (
+                    <div className="flex gap-2">
+                      <input type="email" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-slate-900">{profile.email}</p>
+                  )}
                 </div>
+
+                {/* Editable Phone */}
                 <div>
-                  <p className="text-slate-500 mb-0.5">Phone Number</p>
-                  <p className="font-medium text-slate-900">{mockProfile.contact}</p>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-slate-500">Phone Number</p>
+                    {editField !== 'phone' && (
+                      <button onClick={() => startEdit('phone')} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {editField === 'phone' ? (
+                    <div className="flex gap-2">
+                      <input type="tel" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-slate-900">{profile.phone}</p>
+                  )}
                 </div>
+                
+                {/* Editable Address */}
                 <div>
-                  <p className="text-slate-500 mb-0.5">Residential Address</p>
-                  <p className="font-medium text-slate-900">{mockProfile.address}</p>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-slate-500">Residential Address</p>
+                    {editField !== 'address' && (
+                      <button onClick={() => startEdit('address')} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {editField === 'address' ? (
+                    <div className="flex gap-2">
+                      <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-slate-900">{profile.address || 'Not provided'}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -83,21 +278,64 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange }) => 
             <div className="group">
               <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2 group-hover:text-teal-500 transition-colors">Medical Profile</h4>
               <div className="space-y-4 text-sm">
+                
+                {/* Editable Emergency Name */}
+                <div>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-slate-500">Emergency Contact Name</p>
+                    {editField !== 'emergencyContactName' && (
+                      <button onClick={() => startEdit('emergencyContactName')} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {editField === 'emergencyContactName' ? (
+                    <div className="flex gap-2">
+                      <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-slate-900">{profile.emergencyContactName || 'Not provided'}</p>
+                  )}
+                </div>
+
+                {/* Editable Emergency Phone */}
+                <div>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-slate-500">Emergency Contact Number</p>
+                    {editField !== 'emergencyContactPhone' && (
+                      <button onClick={() => startEdit('emergencyContactPhone')} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {editField === 'emergencyContactPhone' ? (
+                    <div className="flex gap-2">
+                      <input type="tel" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-slate-900">{profile.emergencyContactPhone || 'Not provided'}</p>
+                  )}
+                </div>
+
                 <div>
                   <p className="text-slate-500 mb-1.5">Known Allergies</p>
                   <div className="flex flex-wrap gap-2">
-                    {mockProfile.allergies.map((allergy, idx) => (
-                      <span key={idx} className="bg-red-50 text-red-700 px-2.5 py-1 rounded-md text-xs font-semibold border border-red-100 hover:bg-red-100 transition-colors cursor-default">
-                        {allergy}
-                      </span>
-                    ))}
+                    {profile.knownAllergies && profile.knownAllergies.length > 0 ? (
+                      profile.knownAllergies.map((allergy: string, idx: number) => (
+                        <span key={idx} className="bg-red-50 text-red-700 px-2.5 py-1 rounded-md text-xs font-semibold border border-red-100 hover:bg-red-100 transition-colors cursor-default">
+                          {allergy}
+                        </span>
+                      ))
+                    ) : (
+                      <p className="text-slate-400 italic">Will update later</p>
+                    )}
                   </div>
                 </div>
-                <div className="pt-2">
-                  <p className="text-slate-500 mb-0.5">Emergency Contact</p>
-                  <p className="font-medium text-slate-900">{mockProfile.emergencyContact.name} ({mockProfile.emergencyContact.relation})</p>
-                  <p className="text-slate-600">{mockProfile.emergencyContact.phone}</p>
-                </div>
+
               </div>
             </div>
 
@@ -105,17 +343,15 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange }) => 
         </div>
       </div>
 
-      {/* Logout Button placed at bottom center */}
       <div className="flex justify-center pt-4 pb-8">
         <button 
-          onClick={() => { 
-            localStorage.removeItem('userRole');
-            window.location.href = '/login';
-          }} 
+          onClick={async () => { 
+            await authApi.logout(); 
+            window.location.href = '/login'; 
+          }}
           className="flex items-center gap-2 px-6 py-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl font-semibold transition-all hover:scale-105 active:scale-95"
         >
-          <LogOut className="w-5 h-5" />
-          Log Out
+          <LogOut className="w-5 h-5" /> Log Out
         </button>
       </div>
     </div>
