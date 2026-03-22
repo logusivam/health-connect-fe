@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, FilePlus, AlertTriangle, User, History, ChevronLeft, ChevronRight } from 'lucide-react';
 import favIcon from '../../assets/logo-v1.png';

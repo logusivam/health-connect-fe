@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import AuthPage from '../pages/auth/AuthPage';
 import PatientDashboard from '../pages/patient/PatientDashboard';
