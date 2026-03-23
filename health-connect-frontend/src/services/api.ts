@@ -33,3 +33,8 @@ export const doctorApi = {
   getProfile: () => fetchWithCookies('/doctors/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/doctors/profile', { method: 'PUT', body: JSON.stringify(data) }),
 };
+
+// ADDED: New API group for metadata
+export const metadataApi = {
+  getDepartments: () => fetchWithCookies('/metadata/departments', { method: 'GET' })
+};
