@@ -27,11 +27,15 @@ export const authApi = {
 export const patientApi = {
   getProfile: () => fetchWithCookies('/patients/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/patients/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  bookAppointment: (data: any) => fetchWithCookies('/patients/appointments', { method: 'POST', body: JSON.stringify(data) }),
+  getAppointments: () => fetchWithCookies('/patients/get-appointments', { method: 'GET' }) 
 };
 
 export const doctorApi = {
   getProfile: () => fetchWithCookies('/doctors/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/doctors/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  // ADDED: Fetch all doctors for the booking page
+    getDirectory: () => fetchWithCookies('/doctors/directory', { method: 'GET' }),
 };
 
 // ADDED: New API group for metadata

@@ -1,75 +1,160 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Smartphone, CreditCard, Building, X, CheckCircle2 } from 'lucide-react';
-import type { BookedAppointment } from '../../types/patient.types';
-import { mockDepartments, mockDoctors, initialAppointments, mockProfile } from '../../data/mockPatientData';
+import { metadataApi, doctorApi, patientApi } from '../../services/api'; 
 
 type PaymentStep = 'HIDDEN' | 'SUMMARY' | 'OPTIONS' | 'SUCCESS';
+
+// We update the local interface to match the shape we need for the UI
+interface BookedAppointment {
+  id: string;
+  doctorName: string;
+  department: string;
+  problem: string;
+  date: string;
+  status: 'Upcoming' | 'Ongoing' | 'Completed';
+}
 
 const BookAppointmentView: React.FC = () => {
   const [department, setDepartment] = useState('');
   const [date, setDate] = useState('');
-  const [problemBrief, setProblemBrief] = useState('');
+  const [complaints, setComplaints] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
   
-  const [appointments, setAppointments] = useState<BookedAppointment[]>(initialAppointments);
+  const [appointments, setAppointments] = useState<BookedAppointment[]>([]);
   
+  // Real Data States
+  const [departmentsList, setDepartmentsList] = useState<any[]>([]);
+  const [doctorsList, setDoctorsList] = useState<any[]>([]);
+  const [patientName, setPatientName] = useState<string>('Loading...'); 
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false); 
+
   // Payment Modal State
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('HIDDEN');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
 
   const APPOINTMENT_FEE = 500; // in INR
 
-  // Mock availability logic purely for demonstration: available based on date odd/even parity 
-  const dayOfMonth = date ? new Date(date).getDate() : 0;
-  
-  const filteredDoctors = mockDoctors.filter(doc => !department || doc.specialty === department).map(doc => {
-    const isDocEven = parseInt(doc.id.split('-')[1] || '0') % 2 === 0;
-    const isDateEven = dayOfMonth % 2 === 0;
-    const isAvailable = date ? (isDocEven === isDateEven) : false;
+  // --- Real-time Status Calculator ---
+  const calculateStatus = (visitDate: string): 'Upcoming' | 'Ongoing' | 'Completed' => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to midnight for accurate day comparison
     
-    return { ...doc, isAvailable };
+    const apptDate = new Date(visitDate);
+    apptDate.setHours(0, 0, 0, 0);
+
+    const timeDiff = apptDate.getTime() - today.getTime();
+
+    if (timeDiff > 0) return 'Upcoming';
+    if (timeDiff === 0) return 'Ongoing';
+    return 'Completed';
+  };
+
+  useEffect(() => {
+    const fetchBookingData = async () => {
+      try {
+        const [deptRes, docsRes, patientRes, apptsRes] = await Promise.all([
+          metadataApi.getDepartments(),
+          doctorApi.getDirectory(),
+          patientApi.getProfile(),
+          patientApi.getAppointments() // Fetch appointments
+        ]);
+        
+        if (deptRes.success) setDepartmentsList(deptRes.data);
+        if (docsRes.success) setDoctorsList(docsRes.data);
+        if (patientRes.success) setPatientName(`${patientRes.data.firstName} ${patientRes.data.lastName}`);
+        
+        if (apptsRes.success) {
+          // Map DB records to UI format and calculate status dynamically
+          const formattedAppts = apptsRes.data.map((record: any) => ({
+            id: record._id,
+            doctorName: `Dr. ${record.doctor_id.firstName} ${record.doctor_id.lastName}`,
+            department: record.doctor_id.department || 'General',
+            problem: record.chiefComplaint,
+            date: new Date(record.visitDate).toISOString().split('T')[0],
+            status: calculateStatus(record.visitDate)
+          }));
+          setAppointments(formattedAppts);
+        }
+      } catch (error) {
+        console.error("Failed to load booking data");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchBookingData();
+  }, []);
+
+  const filteredDoctors = doctorsList.filter(doc => {
+    if (!department) return true; 
+    return doc.department === department;
   });
 
-  const selectedDoctorDetails = mockDoctors.find(d => d.id === selectedDoctor);
+  const selectedDoctorDetails = doctorsList.find(d => d._id === selectedDoctor);
 
   const handleConfirmAppointmentClick = () => {
-    if (!problemBrief.trim()) {
-      alert("Please provide a brief description of your problem.");
+    if (!complaints.trim()) {
+      alert("Please provide your chief complaints.");
       return;
     }
     setPaymentStep('SUMMARY');
   };
 
-  const handleProcessPayment = () => {
+  const handleProcessPayment = async () => {
     if (!selectedPaymentMethod) {
       alert("Please select a payment method.");
       return;
     }
     
-    setPaymentStep('SUCCESS');
-    
-    // Add to upcoming appointments
-    const newAppointment: BookedAppointment = {
-      id: `apt-${Date.now()}`,
-      doctorName: selectedDoctorDetails?.name || 'Unknown Doctor',
-      department: department || selectedDoctorDetails?.specialty || 'General Practice',
-      problem: problemBrief,
-      date: date,
-      status: 'Upcoming'
-    };
-    
-    setAppointments([newAppointment, ...appointments]);
+    setIsProcessing(true);
 
-    // Auto close and reset
-    setTimeout(() => {
-      setPaymentStep('HIDDEN');
-      setDepartment('');
-      setDate('');
-      setProblemBrief('');
-      setSelectedDoctor(null);
-      setSelectedPaymentMethod('');
-    }, 2500);
+    try {
+      const res = await patientApi.bookAppointment({
+        doctor_id: selectedDoctorDetails._id,
+        visitDate: date,
+        chiefComplaint: complaints
+      });
+
+      if (res.success) {
+        setPaymentStep('SUCCESS');
+        
+        // Optimistically add to UI with calculated status
+        const newAppointment: BookedAppointment = {
+          id: res.data._id,
+          doctorName: `Dr. ${selectedDoctorDetails.firstName} ${selectedDoctorDetails.lastName}`,
+          department: department || selectedDoctorDetails?.department || 'General Practice',
+          problem: complaints,
+          date: date,
+          status: calculateStatus(date)
+        };
+        
+        setAppointments([newAppointment, ...appointments]);
+
+        setTimeout(() => {
+          setPaymentStep('HIDDEN');
+          setDepartment('');
+          setDate('');
+          setComplaints('');
+          setSelectedDoctor(null);
+          setSelectedPaymentMethod('');
+        }, 2500);
+      } else {
+        alert(res.message || "Failed to book appointment.");
+      }
+    } catch (error) {
+      alert("Network error processing appointment.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
+
+  if (isLoading) {
+    return <div className="text-center py-20 text-slate-500">Loading booking data...</div>;
+  }
+
+  // Split appointments into Active and Completed
+  const activeAppointments = appointments.filter(a => a.status === 'Upcoming' || a.status === 'Ongoing');
+  const completedAppointments = appointments.filter(a => a.status === 'Completed');
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -80,7 +165,6 @@ const BookAppointmentView: React.FC = () => {
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8 relative transition-all hover:shadow-md">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {/* Department Dropdown */}
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700 block">Select Department</label>
             <select 
@@ -89,36 +173,34 @@ const BookAppointmentView: React.FC = () => {
               className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-slate-50 focus:bg-white appearance-none cursor-pointer"
             >
               <option value="">All Departments</option>
-              {mockDepartments.map(dept => (
-                <option key={dept} value={dept}>{dept}</option>
+              {departmentsList.map(dept => (
+                <option key={dept._id} value={dept.name}>{dept.name}</option>
               ))}
             </select>
           </div>
 
-          {/* Date Selection */}
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700 block">Select Date</label>
             <input 
               type="date"
               value={date}
               onChange={(e) => { setDate(e.target.value); setSelectedDoctor(null); }}
-              min={new Date().toISOString().split('T')[0]} // prevent past dates
+              min={new Date().toISOString().split('T')[0]} 
               className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-slate-50 focus:bg-white cursor-pointer"
             />
           </div>
         </div>
 
-        {/* Problem Brief Field */}
         <div className="space-y-2 mb-8">
           <div className="flex justify-between items-center">
-            <label className="text-sm font-semibold text-slate-700 block">Problem Brief</label>
-            <span className={`text-xs font-medium ${problemBrief.length >= 1000 ? 'text-red-500' : 'text-slate-400'}`}>
-              {problemBrief.length} / 1000
+            <label className="text-sm font-semibold text-slate-700 block">Chief Complaints</label>
+            <span className={`text-xs font-medium ${complaints.length >= 1000 ? 'text-red-500' : 'text-slate-400'}`}>
+              {complaints.length} / 1000
             </span>
           </div>
           <textarea
-            value={problemBrief}
-            onChange={(e) => setProblemBrief(e.target.value)}
+            value={complaints}
+            onChange={(e) => setComplaints(e.target.value)}
             maxLength={1000}
             rows={3}
             placeholder="Please briefly describe your symptoms or reason for the visit..."
@@ -126,7 +208,6 @@ const BookAppointmentView: React.FC = () => {
           />
         </div>
 
-        {/* Doctors List */}
         <div className="space-y-4 animate-in fade-in duration-500">
           <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-2">Available Doctors</h3>
           
@@ -143,35 +224,27 @@ const BookAppointmentView: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {filteredDoctors.map(doc => (
                 <button
-                  key={doc.id}
-                  disabled={!doc.isAvailable}
-                  onClick={() => setSelectedDoctor(doc.id)}
+                  key={doc._id}
+                  onClick={() => setSelectedDoctor(doc._id)}
                   className={`flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all duration-300 ${
-                    !doc.isAvailable 
-                      ? 'opacity-60 cursor-not-allowed border-slate-100 bg-slate-50' 
-                      : selectedDoctor === doc.id
-                        ? 'border-blue-600 bg-blue-50 shadow-md shadow-blue-100 scale-[1.02]'
-                        : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
+                    selectedDoctor === doc._id
+                      ? 'border-blue-600 bg-blue-50 shadow-md shadow-blue-100 scale-[1.02]'
+                      : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
                   }`}
                 >
-                  {/* Avatar rendering */}
                   {doc.avatar ? (
-                     <img src={doc.avatar} alt={doc.name} className={`w-12 h-12 rounded-full object-cover shrink-0 border transition-all ${!doc.isAvailable ? 'border-slate-200 grayscale' : 'border-blue-200 group-hover:border-blue-400'}`} />
+                     <img src={doc.avatar} alt={doc.firstName} className="w-12 h-12 rounded-full object-cover shrink-0 border border-blue-200 group-hover:border-blue-400 transition-all" />
                   ) : (
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold border transition-all ${
-                      !doc.isAvailable ? 'bg-slate-200 text-slate-500 border-slate-200' : 'bg-blue-100 text-blue-700 border-blue-200 group-hover:bg-blue-200'
-                    }`}>
-                      {doc.name.replace('Dr. ', '').charAt(0)}
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold border border-blue-200 bg-blue-100 text-blue-700 group-hover:bg-blue-200 transition-all">
+                      {doc.firstName.charAt(0)}
                     </div>
                   )}
 
                   <div>
-                    <p className={`font-semibold ${!doc.isAvailable ? 'text-slate-600' : 'text-slate-900'}`}>{doc.name}</p>
-                    <p className="text-xs text-slate-500 mb-2">{doc.specialty}</p>
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${
-                      doc.isAvailable ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'
-                    }`}>
-                      {doc.isAvailable ? 'Available' : 'Unavailable'}
+                    <p className="font-semibold text-slate-900">Dr. {doc.firstName} {doc.lastName}</p>
+                    <p className="text-xs text-slate-500 mb-2">{doc.department || 'General'}</p>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-green-100 text-green-700">
+                      Available
                     </span>
                   </div>
                 </button>
@@ -180,7 +253,6 @@ const BookAppointmentView: React.FC = () => {
           )}
         </div>
 
-        {/* Submit Button */}
         {date && selectedDoctor && (
           <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end animate-in fade-in slide-in-from-bottom-2">
             <button 
@@ -193,13 +265,13 @@ const BookAppointmentView: React.FC = () => {
         )}
       </div>
 
-      {/* Upcoming Appointments Section */}
+      {/* --- Upcoming & Ongoing Appointments Section --- */}
       <div className="space-y-4 pt-6">
         <h3 className="text-xl font-bold text-slate-900">Upcoming Appointments</h3>
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          {appointments.length === 0 ? (
+          {activeAppointments.length === 0 ? (
             <div className="text-center py-8 text-slate-500">
-              You have no appointments scheduled.
+              You have no active appointments.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -208,31 +280,21 @@ const BookAppointmentView: React.FC = () => {
                   <tr>
                     <th className="px-6 py-4 font-semibold text-slate-700">Doctor Name</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Problem Brief</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Chief Complaints</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Date</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {appointments.map((appt) => (
+                  {activeAppointments.map((appt) => (
                     <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">
-                        {appt.doctorName}
-                      </td>
-                      <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
-                        {appt.department}
-                      </td>
-                      <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">
-                        {appt.problem}
-                      </td>
-                      <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">
-                        {appt.date}
-                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
+                      <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
+                      <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
+                      <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          appt.status === 'Upcoming' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
-                          appt.status === 'Completed' ? 'bg-green-50 text-green-700 border border-green-100' :
-                          'bg-red-50 text-red-700 border border-red-100'
+                          appt.status === 'Ongoing' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
                         }`}>
                           {appt.status}
                         </span>
@@ -246,17 +308,53 @@ const BookAppointmentView: React.FC = () => {
         </div>
       </div>
 
+      {/* --- Completed Appointments Section --- */}
+      {completedAppointments.length > 0 && (
+        <div className="space-y-4 pt-6">
+          <h3 className="text-xl font-bold text-slate-900">Completed Appointments</h3>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Doctor Name</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Chief Complaints</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Date</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {completedAppointments.map((appt) => (
+                    <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
+                      <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
+                      <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
+                      <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-100">
+                          {appt.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment Popover Modal */}
       {paymentStep !== 'HIDDEN' && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
             
-            {/* Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
               <h3 className="font-bold text-slate-900">
                 {paymentStep === 'SUMMARY' ? 'Appointment Summary' : paymentStep === 'OPTIONS' ? 'Select Payment Method' : 'Payment Status'}
               </h3>
-              {paymentStep !== 'SUCCESS' && (
+              {paymentStep !== 'SUCCESS' && !isProcessing && (
                 <button 
                   onClick={() => setPaymentStep('HIDDEN')}
                   className="text-slate-400 hover:text-slate-600 bg-slate-200 hover:bg-slate-300 p-1.5 rounded-full transition-colors"
@@ -266,10 +364,8 @@ const BookAppointmentView: React.FC = () => {
               )}
             </div>
 
-            {/* Content Area */}
             <div className="p-6 overflow-y-auto">
               
-              {/* Step 1: Summary */}
               {paymentStep === 'SUMMARY' && (
                 <div className="space-y-5 animate-in slide-in-from-right-8 duration-300">
                   <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
@@ -280,19 +376,19 @@ const BookAppointmentView: React.FC = () => {
                   <div className="space-y-3 text-sm border border-slate-100 rounded-xl p-4">
                     <div className="flex justify-between">
                       <span className="text-slate-500">Patient Name:</span>
-                      <span className="font-semibold text-slate-900">{mockProfile.name}</span>
+                      <span className="font-semibold text-slate-900">{patientName}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Doctor Name:</span>
-                      <span className="font-semibold text-slate-900">{selectedDoctorDetails?.name}</span>
+                      <span className="font-semibold text-slate-900">Dr. {selectedDoctorDetails?.firstName} {selectedDoctorDetails?.lastName}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Date:</span>
                       <span className="font-semibold text-slate-900">{date}</span>
                     </div>
                     <div className="pt-2 mt-2 border-t border-slate-100">
-                      <span className="text-slate-500 block mb-1">Problem Brief:</span>
-                      <p className="text-slate-800 font-medium line-clamp-2">{problemBrief}</p>
+                      <span className="text-slate-500 block mb-1">Chief Complaints:</span>
+                      <p className="text-slate-800 font-medium line-clamp-2">{complaints}</p>
                     </div>
                   </div>
 
@@ -305,11 +401,9 @@ const BookAppointmentView: React.FC = () => {
                 </div>
               )}
 
-              {/* Step 2: Payment Options */}
               {paymentStep === 'OPTIONS' && (
                 <div className="space-y-5 animate-in slide-in-from-right-8 duration-300">
                   <div className="space-y-3">
-                    {/* UPI Option */}
                     <label className={`flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-colors ${selectedPaymentMethod === 'upi' ? 'border-blue-500 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
                       <input 
                         type="radio" 
@@ -318,6 +412,7 @@ const BookAppointmentView: React.FC = () => {
                         checked={selectedPaymentMethod === 'upi'}
                         onChange={(e) => setSelectedPaymentMethod(e.target.value)}
                         className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        disabled={isProcessing}
                       />
                       <Smartphone className="w-6 h-6 text-slate-600" />
                       <div className="flex-1">
@@ -326,7 +421,6 @@ const BookAppointmentView: React.FC = () => {
                       </div>
                     </label>
 
-                    {/* Card Option */}
                     <label className={`flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-colors ${selectedPaymentMethod === 'card' ? 'border-blue-500 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
                       <input 
                         type="radio" 
@@ -335,6 +429,7 @@ const BookAppointmentView: React.FC = () => {
                         checked={selectedPaymentMethod === 'card'}
                         onChange={(e) => setSelectedPaymentMethod(e.target.value)}
                         className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        disabled={isProcessing}
                       />
                       <CreditCard className="w-6 h-6 text-slate-600" />
                       <div className="flex-1">
@@ -343,7 +438,6 @@ const BookAppointmentView: React.FC = () => {
                       </div>
                     </label>
 
-                    {/* Net Banking Option */}
                     <label className={`flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-colors ${selectedPaymentMethod === 'netbanking' ? 'border-blue-500 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
                       <input 
                         type="radio" 
@@ -352,6 +446,7 @@ const BookAppointmentView: React.FC = () => {
                         checked={selectedPaymentMethod === 'netbanking'}
                         onChange={(e) => setSelectedPaymentMethod(e.target.value)}
                         className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        disabled={isProcessing}
                       />
                       <Building className="w-6 h-6 text-slate-600" />
                       <div className="flex-1">
@@ -364,21 +459,22 @@ const BookAppointmentView: React.FC = () => {
                   <div className="flex gap-3 pt-2">
                     <button 
                       onClick={() => setPaymentStep('SUMMARY')}
-                      className="px-6 py-3.5 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                      disabled={isProcessing}
+                      className="px-6 py-3.5 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
                     >
                       Back
                     </button>
                     <button 
                       onClick={handleProcessPayment}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-[0.98]"
+                      disabled={isProcessing}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      Pay ₹{APPOINTMENT_FEE}
+                      {isProcessing ? 'Processing...' : `Pay ₹${APPOINTMENT_FEE}`}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Step 3: Success */}
               {paymentStep === 'SUCCESS' && (
                 <div className="text-center py-8 animate-in zoom-in-95 duration-300">
                   <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
