@@ -170,9 +170,10 @@ export default function PatientDashboard() {
             {activeView === 'DASHBOARD' && <DashboardHome onNavigate={handleNavigate} />}
             {activeView === 'HISTORY' && <TreatmentHistoryView highlightedRecordId={highlightedRecordId} />}
             {activeView === 'UNSUITABLE_MEDICINE' && <UnsuitableMedicineView />}
-            {activeView === 'BOOK_APPOINTMENT' && <BookAppointmentView />}
             
-            {/* Provide callback to sync changes */}
+            {/* UPDATED: Pass the highlighted ID down to the book appointment view */}
+            {activeView === 'BOOK_APPOINTMENT' && <BookAppointmentView highlightedRecordId={highlightedRecordId} />}
+            
             {activeView === 'PROFILE' && (
               <ProfileView 
                 avatar={userAvatar} 

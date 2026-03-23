@@ -47,3 +47,18 @@ export const updateDoctorProfile = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
+
+// GET /api/v1/doctors/directory
+export const getDoctorDirectory = async (req, res) => {
+  try {
+    // Only return active, non-deleted doctors. 
+    // We select only the safe public fields to send to the frontend.
+    const doctors = await DoctorProfile.find({ is_deleted: false })
+      .select('firstName lastName department specialization avatar _id');
+    
+    res.status(200).json({ success: true, data: doctors });
+  } catch (error) {
+    console.error("Error fetching doctor directory:", error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};

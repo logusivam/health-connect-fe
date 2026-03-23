@@ -66,56 +66,96 @@ export const loginUser = async (req, res) => {
   try {
     const { email, password, role, otp } = req.body;
 
-    const user = await User.findOne({ email, role, is_deleted: false });
+    const user = await User.findOne({ email: email.toLowerCase(), role, is_deleted: false });
+    
+    // If no user found (wrong email or role), we can't lock an account that doesn't exist
     if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials or role.' });
-    if (user.is_locked) return res.status(403).json({ success: false, message: 'Account locked.' });
 
-    // MFA Check for Doctor/Admin
+    // 1. Check if account is currently locked
+    if (user.is_locked) {
+      if (user.locked_until && user.locked_until > new Date()) {
+        const minsLeft = Math.ceil((user.locked_until - new Date()) / (1000 * 60));
+        return res.status(403).json({ 
+          success: false, 
+          message: `Account locked due to multiple failed attempts. Please wait ${minsLeft} minutes or reset your password.` 
+        });
+      } else {
+        // Time has passed (15 mins is up), Auto-Unlock the account
+        user.is_locked = false;
+        user.locked_until = null;
+        user.current_failed_attempts = 0;
+        await user.save();
+      }
+    }
+
+    // 2. MFA Check for Doctor/Admin
     if (user.mfa_enabled) {
       if (!otp) return res.status(400).json({ success: false, message: 'OTP required.' });
       const otpRecord = await Otp.findOne({ email: email.toLowerCase(), otp });
-      if (!otpRecord) return res.status(400).json({ success: false, message: 'Wrong or expired OTP.' });
+      
+      if (!otpRecord) {
+        await handleFailedAttempt(user);
+        return res.status(400).json({ success: false, message: 'Wrong or expired OTP.' });
+      }
       
       // Cleanup OTP after successful use
       await Otp.deleteOne({ email: email.toLowerCase() });
     }
 
+    // 3. Password Check
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      user.failed_login_count += 1;
-      if (user.failed_login_count >= 3) user.is_locked = true;
-      await user.save();
+      await handleFailedAttempt(user);
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    user.failed_login_count = 0;
-    user.mfa_send_count = 0; // Reset OTP send count on successful login
-    user.mfa_blocked_until = null; // Clear any OTP blocks
+    // 4. Success: Reset all trackers
+    user.current_failed_attempts = 0;
+    user.is_locked = false;
+    user.locked_until = null;
+    user.mfa_send_count = 0; 
+    user.mfa_blocked_until = null;
     user.last_login_at = new Date();
     await user.save();
 
+    // 5. Generate Tokens
     const privateKey = Buffer.from(process.env.JWT_PRIVATE_KEY, 'base64').toString('ascii');
     const payload = { id: user._id, role: user.role };
     const signOptions = { algorithm: 'RS256', keyid: process.env.JWT_KID };
 
-    // Generate Tokens
     const accessToken = jwt.sign(payload, privateKey, { ...signOptions, expiresIn: '15m' });
     const refreshToken = jwt.sign(payload, privateKey, { ...signOptions, expiresIn: '7d' });
+ 
+    res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
+    res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
 
-    // SET HTTP-ONLY COOKIES
-    res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 }); // 15 mins
-    res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 }); // 7 days
-
-    // Do NOT send tokens in the JSON response anymore
-    res.status(200).json({
-      success: true,
-      data: { user: { id: user._id, email: user.email, role: user.role } }
+    res.status(200).json({ 
+      success: true, 
+      data: { user: { id: user._id, email: user.email, role: user.role } } 
     });
 
   } catch (error) {
     console.error('Login Error:', error);
     res.status(500).json({ success: false, message: 'Server error during login.' });
   }
+};
+
+// Helper function to manage failed attempts
+const handleFailedAttempt = async (user) => {
+  user.current_failed_attempts += 1;
+  
+  if (user.current_failed_attempts >= 3) {
+    user.is_locked = true;
+    user.locked_until = new Date(Date.now() + 15 * 60 * 1000); // Lock for 15 mins
+    
+    // Push cumulative history record
+    user.failed_login_count.push({
+      count: user.current_failed_attempts,
+      date: new Date()
+    });
+  }
+  
+  await user.save();
 };
 
 // NEW: Logout to clear cookies

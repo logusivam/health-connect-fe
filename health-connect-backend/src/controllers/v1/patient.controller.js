@@ -1,5 +1,6 @@
 import PatientProfile from '../../models/PatientProfile.js';
-import User from '../../models/User.js';
+import TreatmentRecord from '../../models/TreatmentRecord.js';
+import User from '../../models/User.js'; 
 
 // GET /api/v1/patients/profile
 export const getPatientProfile = async (req, res) => {
@@ -59,5 +60,57 @@ export const updatePatientProfile = async (req, res) => {
   } catch (error) {
     console.error('Update Profile Error:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// NEW: Book Appointment / Create Treatment Record
+export const bookAppointment = async (req, res) => {
+  try {
+    const { doctor_id, visitDate, chiefComplaint } = req.body;
+
+    // Get the patient's profile ID using their logged-in user ID
+    const patientProfile = await PatientProfile.findOne({ user_id: req.user.id });
+    
+    if (!patientProfile) {
+      return res.status(404).json({ success: false, message: 'Patient profile not found.' });
+    }
+
+    const newRecord = new TreatmentRecord({
+      doctor_id,
+      patient_id: patientProfile._id,
+      visitDate,
+      chiefComplaint
+    });
+
+    const savedRecord = await newRecord.save();
+
+    res.status(201).json({ success: true, data: savedRecord, message: 'Appointment booked successfully.' });
+  } catch (error) {
+    console.error('Error booking appointment:', error);
+    res.status(500).json({ success: false, message: 'Server Error booking appointment.' });
+  }
+};
+
+// NEW: Fetch all appointments for the logged-in patient
+export const getPatientAppointments = async (req, res) => {
+  try {
+    const patientProfile = await PatientProfile.findOne({ user_id: req.user.id });
+    
+    if (!patientProfile) {
+      return res.status(404).json({ success: false, message: 'Patient profile not found.' });
+    }
+
+    // Fetch records and populate the doctor's name and department
+    const records = await TreatmentRecord.find({ 
+      patient_id: patientProfile._id, 
+      is_deleted: false 
+    })
+    .populate('doctor_id', 'firstName lastName department')
+    .sort({ visitDate: -1 }); // Sort newest first
+
+    res.status(200).json({ success: true, data: records });
+  } catch (error) {
+    console.error('Error fetching appointments:', error);
+    res.status(500).json({ success: false, message: 'Server Error fetching appointments.' });
   }
 };

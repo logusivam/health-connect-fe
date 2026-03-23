@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Clock, LogOut, Edit2, Save, X, AlertCircle } from 'lucide-react';
-import { doctorApi, authApi } from '../../services/api';
+import { doctorApi, authApi, metadataApi } from '../../services/api';
 
 interface DoctorProfileViewProps {
   avatar?: string;
@@ -10,28 +10,37 @@ interface DoctorProfileViewProps {
 
 const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarChange, onProfileUpdate }) => {
   const [profile, setProfile] = useState<any>(null);
+  const [departments, setDepartments] = useState<any[]>([]); // NEW: Store DB Departments
   const [isLoading, setIsLoading] = useState(true);
 
   const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editValueLast, setEditValueLast] = useState('');
-  const [avatarError, setAvatarError] = useState<string>(''); // For 4MB limit error
+  const [avatarError, setAvatarError] = useState<string>(''); 
 
   useEffect(() => {
-    fetchProfile();
+    fetchData();
   }, []);
 
-  const fetchProfile = async () => {
+  const fetchData = async () => {
     try {
-      const res = await doctorApi.getProfile();
-      if (res.success) {
-        setProfile(res.data);
-        if (res.data.avatar) onAvatarChange(res.data.avatar);
-        // Sync initial data up to topbar
-        if (onProfileUpdate) onProfileUpdate(`${res.data.firstName} ${res.data.lastName}`, res.data.specialization);
+      // Fetch both profile and departments concurrently
+      const [profileRes, deptRes] = await Promise.all([
+        doctorApi.getProfile(),
+        metadataApi.getDepartments()
+      ]);
+
+      if (profileRes.success) {
+        setProfile(profileRes.data);
+        if (profileRes.data.avatar) onAvatarChange(profileRes.data.avatar);
+        if (onProfileUpdate) onProfileUpdate(`${profileRes.data.firstName} ${profileRes.data.lastName}`, profileRes.data.specialization);
+      }
+      
+      if (deptRes.success) {
+        setDepartments(deptRes.data);
       }
     } catch (error) {
-      console.error("Failed to fetch doctor profile");
+      console.error("Failed to fetch data");
     } finally {
       setIsLoading(false);
     }
@@ -41,16 +50,13 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setAvatarError(''); // Clear previous errors
-
-    // 1. Check File Size (Limit: 4MB)
-    const MAX_SIZE = 4 * 1024 * 1024; // 4MB in bytes
+    setAvatarError(''); 
+    const MAX_SIZE = 4 * 1024 * 1024; 
     if (file.size > MAX_SIZE) {
       setAvatarError('Image is too large. Must be less than 4MB.');
       return;
     }
 
-    // 2. Convert Image to WebP using Canvas
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
@@ -63,15 +69,10 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
         if (!ctx) return;
         
         ctx.drawImage(img, 0, 0, img.width, img.height);
-        
-        // Output as WebP format with 0.8 quality
         const webpBase64 = canvas.toDataURL('image/webp', 0.8);
 
-        // Optimistic UI update
         onAvatarChange(webpBase64);
         setProfile((prev: any) => ({ ...prev, avatar: webpBase64 }));
-        
-        // Save to backend immediately
         await doctorApi.updateProfile({ avatarBase64: webpBase64 });
       };
       img.src = event.target?.result as string;
@@ -97,6 +98,10 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     if (editField === 'name') {
       updatePayload = { firstName: editValue, lastName: editValueLast };
       setProfile((prev: any) => ({ ...prev, firstName: editValue, lastName: editValueLast }));
+    } else if (editField === 'department') {
+      // NEW: If department changes, automatically reset the specialization
+      updatePayload = { department: editValue, specialization: '' };
+      setProfile((prev: any) => ({ ...prev, department: editValue, specialization: '' }));
     } else {
       updatePayload = { [editField]: editValue };
       setProfile((prev: any) => ({ ...prev, [editField]: editValue }));
@@ -105,17 +110,20 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     const res = await doctorApi.updateProfile(updatePayload);
     if (!res.success) {
       alert("Failed to update field.");
-      fetchProfile(); // Rollback on failure
+      fetchData(); // Rollback on failure
     } else {
-      // If success, sync the new name or specialization up to the topbar immediately
       if (onProfileUpdate) {
         const updatedName = editField === 'name' ? `${editValue} ${editValueLast}` : `${profile.firstName} ${profile.lastName}`;
-        const updatedSpec = editField === 'specialization' ? editValue : profile.specialization;
+        const updatedSpec = editField === 'specialization' ? editValue : (editField === 'department' ? '' : profile.specialization);
         onProfileUpdate(updatedName, updatedSpec);
       }
     }
     setEditField(null);
   };
+
+  // Helper to get available specializations based on currently selected department
+  const currentDeptObj = departments.find(d => d.name === profile?.department);
+  const availableSpecializations = currentDeptObj ? currentDeptObj.specializations : [];
 
   if (isLoading) return <div className="text-center py-20 text-slate-500">Loading profile data...</div>;
   if (!profile) return <div className="text-center py-20 text-red-500">Failed to load profile data.</div>;
@@ -128,13 +136,9 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-        {/* Top Graphic Area */}
         <div className="h-32 bg-gradient-to-r from-blue-600 to-teal-500 relative"></div>
         
-        {/* Profile Header */}
         <div className="px-8 pb-8 flex flex-col items-center -mt-16 relative z-10">
-          
-          {/* Avatar Upload Container */}
           <div className="flex flex-col items-center">
             <div className="relative group w-32 h-32 rounded-full bg-white p-1.5 shadow-xl mb-4">
               <div className="w-full h-full rounded-full overflow-hidden relative">
@@ -152,7 +156,6 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
               </div>
             </div>
             
-            {/* Display 4MB Error Message */}
             {avatarError && (
               <p className="text-red-500 text-xs font-semibold mb-4 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -161,7 +164,6 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
             )}
           </div>
           
-          {/* Editable Name */}
           <div className="flex items-center gap-3 mb-1 group">
             {editField === 'name' ? (
               <div className="flex items-center gap-2">
@@ -183,30 +185,10 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
           <p className="text-blue-600 font-bold tracking-widest font-mono text-sm mb-3 bg-blue-50 px-3 py-1 rounded-full">{profile._id}</p>
         </div>
 
-        {/* Details Grid */}
         <div className="border-t border-slate-100 p-8 bg-slate-50/50">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             
-            {/* Specialization */}
-            <div className="group">
-              <div className="flex items-center gap-2 mb-1">
-                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">Specialization</p>
-                 {editField !== 'specialization' && (
-                   <button onClick={() => startEdit('specialization')} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-700"><Edit2 className="w-3.5 h-3.5" /></button>
-                 )}
-              </div>
-              {editField === 'specialization' ? (
-                <div className="flex gap-2">
-                  <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
-                </div>
-              ) : (
-                <p className="font-medium text-slate-900 text-lg">{profile.specialization || 'Not specified'}</p>
-              )}
-            </div>
-            
-            {/* Department */}
+            {/* Department (Select) */}
             <div className="group">
               <div className="flex items-center gap-2 mb-1">
                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">Department</p>
@@ -216,12 +198,47 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
               </div>
               {editField === 'department' ? (
                 <div className="flex gap-2">
-                  <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <select value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                    <option value="" disabled>Select Department</option>
+                    {departments.map((dept: any) => (
+                      <option key={dept._id} value={dept.name}>{dept.name}</option>
+                    ))}
+                  </select>
                   <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
                   <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
                 </div>
               ) : (
                 <p className="font-medium text-slate-900 text-lg">{profile.department || 'Not specified'}</p>
+              )}
+            </div>
+
+            {/* Specialization (Cascading Select) */}
+            <div className="group">
+              <div className="flex items-center gap-2 mb-1">
+                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">Specialization</p>
+                 {editField !== 'specialization' && (
+                   <button onClick={() => startEdit('specialization')} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-700"><Edit2 className="w-3.5 h-3.5" /></button>
+                 )}
+              </div>
+              {editField === 'specialization' ? (
+                <div className="flex gap-2">
+                  {profile.department ? (
+                    <select value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                      <option value="" disabled>Select Specialization</option>
+                      {availableSpecializations.map((spec: string) => (
+                        <option key={spec} value={spec}>{spec}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="flex-1 px-3 py-1.5 border border-red-200 bg-red-50 rounded-lg text-sm text-red-600 flex items-center">
+                      Please select a Department first
+                    </div>
+                  )}
+                  {profile.department && <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>}
+                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <p className="font-medium text-slate-900 text-lg">{profile.specialization || 'Not specified'}</p>
               )}
             </div>
 

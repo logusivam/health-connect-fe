@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Activity, Pill, FileText, Clock, ChevronRight, X } from 'lucide-react';
 import type { ViewState, Medication } from '../../types/patient.types';
-import { mockProfile, mockMedications, mockHistory } from '../../data/mockPatientData';
+import { mockMedications, mockHistory } from '../../data/mockPatientData';
+import { patientApi } from '../../services/api'; 
 
 interface DashboardHomeProps {
   onNavigate: (view: ViewState, recordId?: string) => void;
@@ -9,19 +10,83 @@ interface DashboardHomeProps {
 
 const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
   const [selectedMed, setSelectedMed] = useState<Medication | null>(null);
+  
+  // Real Data States
+  const [patientName, setPatientName] = useState<string>('Loading...');
+  const [nextAppointment, setNextAppointment] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const [profileRes, apptsRes] = await Promise.all([
+          patientApi.getProfile(),
+          patientApi.getAppointments()
+        ]);
+
+        if (profileRes.success) {
+          setPatientName(profileRes.data.lastName || profileRes.data.firstName);
+        }
+
+        if (apptsRes.success) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const threeDaysFromNow = new Date(today);
+          threeDaysFromNow.setDate(today.getDate() + 3);
+
+          const upcomingAppts = apptsRes.data.filter((appt: any) => {
+            const apptDate = new Date(appt.visitDate);
+            apptDate.setHours(0, 0, 0, 0);
+            return apptDate.getTime() >= today.getTime() && apptDate.getTime() <= threeDaysFromNow.getTime();
+          });
+
+          upcomingAppts.sort((a: any, b: any) => new Date(a.visitDate).getTime() - new Date(b.visitDate).getTime());
+
+          if (upcomingAppts.length > 0) {
+            setNextAppointment(upcomingAppts[0]);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load dashboard data", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchDashboardData();
+  }, []);
+
+  const getRelativeDayText = (dateString: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const apptDate = new Date(dateString);
+    apptDate.setHours(0, 0, 0, 0);
+
+    const diffTime = Math.abs(apptDate.getTime() - today.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
+    if (diffDays === 2) return 'Day after tomorrow';
+    return 'In 3 days';
+  };
 
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-r from-blue-600 to-teal-600 rounded-2xl p-8 text-white shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:shadow-blue-300/50">
-        <h2 className="text-3xl font-bold mb-2">Hello, {mockProfile.name.split(' ')[0]}!</h2>
+        <h2 className="text-3xl font-bold mb-2">Hello, {patientName}!</h2>
         <p className="text-blue-50 max-w-2xl">
           Welcome to your Health Connect patient portal. Here you can view your latest medical records, check your upcoming appointments, and monitor your health vitals.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Upcoming Appointment */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all">
+        {/* Upcoming Appointment - Now Clickable */}
+        <div 
+          onClick={() => nextAppointment && onNavigate('BOOK_APPOINTMENT', nextAppointment._id)}
+          className={`bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all ${nextAppointment ? 'cursor-pointer' : ''}`}
+        >
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
               <Calendar className="w-5 h-5" />
@@ -29,13 +94,26 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
             <h3 className="font-semibold text-slate-800">Next Appointment</h3>
           </div>
           <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <Clock className="w-4 h-4 text-slate-400 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-slate-900">Tomorrow, 10:00 AM</p>
-                <p className="text-xs text-slate-500">Dr. Sarah Jenkins (General Practice)</p>
+            {isLoading ? (
+              <p className="text-sm text-slate-500">Loading appointment data...</p>
+            ) : nextAppointment ? (
+              <div className="flex items-start gap-3">
+                <Clock className="w-4 h-4 text-slate-400 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-slate-900">
+                    {getRelativeDayText(nextAppointment.visitDate)}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Dr. {nextAppointment.doctor_id.lastName || nextAppointment.doctor_id.firstName} 
+                    <span className="block mt-0.5 text-[10px] uppercase tracking-wider font-semibold text-indigo-600 bg-indigo-50 inline-block px-2 py-0.5 rounded-md">
+                      {nextAppointment.doctor_id.department || 'General Practice'}
+                    </span>
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <p className="text-sm text-slate-500 italic">No upcoming appointments in the next 3 days.</p>
+            )}
           </div>
         </div>
 

@@ -15,6 +15,8 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
   const [role, setRole] = useState<Role>('PATIENT');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Stores the error message from the backend (including the 15 min lock warning)
   const [globalError, setGlobalError] = useState('');
 
   // MFA States
@@ -99,6 +101,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
       if (response.success) {
         onLogin(role);
       } else {
+        // This will display the backend message, e.g., "Account locked... Please wait 15 minutes..."
         setGlobalError(response.message || 'Login failed. Please try again.');
       }
     } catch (error) {
@@ -117,12 +120,6 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
         <h2 className="text-3xl font-bold text-slate-900 mb-2">Welcome back</h2>
         <p className="text-slate-500">Please enter your details to access your portal.</p>
       </div>
-
-      {globalError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl text-center">
-          {globalError}
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-1.5">
@@ -241,6 +238,13 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
           {isLoading ? 'Signing In...' : 'Sign In'}
           {!isLoading && <ArrowRight className="w-5 h-5" />}
         </button>
+
+        {/* Global Error displayed below the submit button for visibility */}
+        {globalError && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl text-center animate-in fade-in">
+            {globalError}
+          </div>
+        )}
       </form>
 
       <div className="mt-8 text-center">

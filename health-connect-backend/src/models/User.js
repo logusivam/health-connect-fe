@@ -8,11 +8,17 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['PATIENT', 'DOCTOR', 'ADMIN'], required: true },
   is_active: { type: Boolean, default: true },
-  is_locked: { type: Boolean, default: false },
-  failed_login_count: { type: Number, default: 0 },
-  mfa_enabled: { type: Boolean, default: false },
   
-  // NEW: DB-Level OTP Attempt Tracking
+  // NEW: Advanced Lockout Tracking
+  is_locked: { type: Boolean, default: false },
+  locked_until: { type: Date }, // Automatically unlocks after this time
+  failed_login_count: [{ 
+    count: { type: Number },
+    date: { type: Date }
+  }],
+  current_failed_attempts: { type: Number, default: 0 }, // Tracks consecutive failures
+
+  mfa_enabled: { type: Boolean, default: false },
   mfa_send_count: { type: Number, default: 0 },
   mfa_blocked_until: { type: Date },
 
@@ -46,6 +52,12 @@ userSchema.pre('save', async function (next) {
     const salt = await bcrypt.genSalt(10);
     doc.password = await bcrypt.hash(doc.password, salt);
     doc.password_updated_at = new Date();
+    
+    // NEW: If password is changed, instantly unlock the account
+    doc.is_locked = false;
+    doc.locked_until = null;
+    doc.current_failed_attempts = 0;
+    
     next();
   } catch (error) {
     next(error);
