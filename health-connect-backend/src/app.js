@@ -8,7 +8,7 @@ const app = express();
 // 1. Define your allowed frontend origins
 const allowedOrigins = [
   'http://localhost:5173', 
-  'https://yourdomain.com',
+  'https://health-connect-fe-delta.vercel.app',
   'https://www.yourdomain.com' // Good practice to include the www variant
 ];
 
