@@ -4,7 +4,6 @@ import { metadataApi, doctorApi, patientApi } from '../../services/api';
 
 type PaymentStep = 'HIDDEN' | 'SUMMARY' | 'OPTIONS' | 'SUCCESS';
 
-// We update the local interface to match the shape we need for the UI
 interface BookedAppointment {
   id: string;
   doctorName: string;
@@ -14,7 +13,12 @@ interface BookedAppointment {
   status: 'Upcoming' | 'Ongoing' | 'Completed';
 }
 
-const BookAppointmentView: React.FC = () => {
+// ADDED: Interface to accept the highlighted prop
+interface BookAppointmentViewProps {
+  highlightedRecordId?: string | null;
+}
+
+const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRecordId }) => {
   const [department, setDepartment] = useState('');
   const [date, setDate] = useState('');
   const [complaints, setComplaints] = useState('');
@@ -33,12 +37,12 @@ const BookAppointmentView: React.FC = () => {
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('HIDDEN');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
 
-  const APPOINTMENT_FEE = 500; // in INR
+  const APPOINTMENT_FEE = 500; 
 
   // --- Real-time Status Calculator ---
   const calculateStatus = (visitDate: string): 'Upcoming' | 'Ongoing' | 'Completed' => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to midnight for accurate day comparison
+    today.setHours(0, 0, 0, 0); 
     
     const apptDate = new Date(visitDate);
     apptDate.setHours(0, 0, 0, 0);
@@ -57,7 +61,7 @@ const BookAppointmentView: React.FC = () => {
           metadataApi.getDepartments(),
           doctorApi.getDirectory(),
           patientApi.getProfile(),
-          patientApi.getAppointments() // Fetch appointments
+          patientApi.getAppointments() 
         ]);
         
         if (deptRes.success) setDepartmentsList(deptRes.data);
@@ -65,7 +69,6 @@ const BookAppointmentView: React.FC = () => {
         if (patientRes.success) setPatientName(`${patientRes.data.firstName} ${patientRes.data.lastName}`);
         
         if (apptsRes.success) {
-          // Map DB records to UI format and calculate status dynamically
           const formattedAppts = apptsRes.data.map((record: any) => ({
             id: record._id,
             doctorName: `Dr. ${record.doctor_id.firstName} ${record.doctor_id.lastName}`,
@@ -84,6 +87,18 @@ const BookAppointmentView: React.FC = () => {
     };
     fetchBookingData();
   }, []);
+
+  // NEW: Scroll to the highlighted record when the component loads or records change
+  useEffect(() => {
+    if (highlightedRecordId) {
+      setTimeout(() => {
+        const element = document.getElementById(`appointment-${highlightedRecordId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100); // Slight delay to ensure DOM is fully painted
+    }
+  }, [highlightedRecordId, appointments]);
 
   const filteredDoctors = doctorsList.filter(doc => {
     if (!department) return true; 
@@ -118,7 +133,6 @@ const BookAppointmentView: React.FC = () => {
       if (res.success) {
         setPaymentStep('SUCCESS');
         
-        // Optimistically add to UI with calculated status
         const newAppointment: BookedAppointment = {
           id: res.data._id,
           doctorName: `Dr. ${selectedDoctorDetails.firstName} ${selectedDoctorDetails.lastName}`,
@@ -152,7 +166,6 @@ const BookAppointmentView: React.FC = () => {
     return <div className="text-center py-20 text-slate-500">Loading booking data...</div>;
   }
 
-  // Split appointments into Active and Completed
   const activeAppointments = appointments.filter(a => a.status === 'Upcoming' || a.status === 'Ongoing');
   const completedAppointments = appointments.filter(a => a.status === 'Completed');
 
@@ -287,7 +300,14 @@ const BookAppointmentView: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {activeAppointments.map((appt) => (
-                    <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr 
+                      key={appt.id} 
+                      id={`appointment-${appt.id}`} // ADDED ID for targeting
+                      // ADDED Highlight Logic
+                      className={`transition-all duration-500 ${
+                        highlightedRecordId === appt.id ? 'bg-blue-50/80 border-l-4 border-blue-500' : 'hover:bg-slate-50/50 border-l-4 border-transparent'
+                      }`}
+                    >
                       <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
                       <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
                       <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
