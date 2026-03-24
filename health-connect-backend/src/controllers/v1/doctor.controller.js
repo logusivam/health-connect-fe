@@ -4,6 +4,7 @@ import PatientProfile from '../../models/PatientProfile.js';
 import MedicalDepartment from '../../models/MedicalDepartment.js';
 import Medicine from '../../models/Medicine.js';
 import UnsuitableMedicine from '../../models/UnsuitableMedicine.js';
+import TreatmentRecord from '../../models/TreatmentRecord.js';
 
 export const getDoctorProfile = async (req, res) => {
   try {
@@ -177,5 +178,67 @@ export const updateFlag = async (req, res) => {
     res.status(200).json({ success: true, message: 'Flag updated successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error updating flag.' });
+  }
+};
+
+// 1. Fetch Today's Appointments for the logged-in doctor
+export const getTodayAppointments = async (req, res) => {
+  try {
+    const doctor = await DoctorProfile.findOne({ user_id: req.user.id });
+    if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found' });
+
+    // Define Today's boundaries
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const appointments = await TreatmentRecord.find({
+      doctor_id: doctor._id,
+      visitDate: { $gte: startOfDay, $lte: endOfDay },
+      is_deleted: false
+    }).populate('patient_id', 'firstName lastName _id');
+
+    res.status(200).json({ success: true, data: appointments });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error fetching today\'s appointments.' });
+  }
+};
+
+// 2. Fetch Completed Treatment Records
+export const getTreatmentRecords = async (req, res) => {
+  try {
+    const doctor = await DoctorProfile.findOne({ user_id: req.user.id });
+    
+    // Fetch records that have a diagnosis (meaning the doctor has filled them out)
+    const records = await TreatmentRecord.find({
+      doctor_id: doctor._id,
+      diagnosis: { $exists: true, $ne: "" },
+      is_deleted: false
+    })
+    .populate('patient_id', 'firstName lastName _id')
+    .sort({ visitDate: -1 });
+
+    res.status(200).json({ success: true, data: records });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error fetching treatment records.' });
+  }
+};
+
+// 3. Update Treatment Record (Save Clinical Findings)
+export const updateTreatmentRecord = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const record = await TreatmentRecord.findByIdAndUpdate(
+      id, 
+      { $set: req.body }, 
+      { new: true }
+    ).populate('patient_id', 'firstName lastName _id');
+    
+    if (!record) return res.status(404).json({ success: false, message: 'Record not found' });
+
+    res.status(200).json({ success: true, data: record, message: 'Record updated successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error updating record.' });
   }
 };

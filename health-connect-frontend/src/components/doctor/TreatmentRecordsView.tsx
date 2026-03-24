@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
-import { Edit, Save, Search, Download, X, FileText } from 'lucide-react';
-import type { TreatmentRecord } from '../../types/doctor.types';
-import { initialTreatmentRecords } from '../../data/mockDoctorData';
+import React, { useState, useEffect, useRef } from 'react';
+import { Edit, Save, Search, Download, X, FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { doctorApi } from '../../services/api';
 
 const TreatmentRecordsView: React.FC = () => {
-  const [records, setRecords] = useState<TreatmentRecord[]>(initialTreatmentRecords);
+  const [records, setRecords] = useState<any[]>([]);
+  const [todayAppointments, setTodayAppointments] = useState<any[]>([]);
+  const [departmentMedicines, setDepartmentMedicines] = useState<string[]>([]);
+  
   const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null); // Links form to the actual DB Record ID
+
+  // In-Viewport Notification State
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
   
   // Search & Export State
   const [searchQuery, setSearchQuery] = useState('');
@@ -13,15 +19,14 @@ const TreatmentRecordsView: React.FC = () => {
   const [exportTimeframe, setExportTimeframe] = useState('this_month');
 
   // Form State
-  const [formData, setFormData] = useState<Omit<TreatmentRecord, 'id'>>({
+  const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    patientName: '',
     complaint: '',
     diagnosis: '',
     treatmentPrescribed: '',
     followUpDate: '',
     followUpInstruction: '',
-    outcomeStatus: 'Ongoing',
+    outcomeStatus: '',
     additionalNotes: '',
     medicineName: '',
     frequency: '',
@@ -29,43 +34,160 @@ const TreatmentRecordsView: React.FC = () => {
     medNotes: ''
   });
 
+  // Autocomplete UI States & Refs
+  const patientDropdownRef = useRef<HTMLDivElement>(null);
+  const medicineDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [patientQuery, setPatientQuery] = useState('');
+  const [patientSuggestions, setPatientSuggestions] = useState<any[]>([]);
+  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  
+  const [medicineQuery, setMedicineQuery] = useState('');
+  const [medicineSuggestions, setMedicineSuggestions] = useState<string[]>([]);
+  const [showMedicineDropdown, setShowMedicineDropdown] = useState(false);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'warning') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  const loadInitialData = async () => {
+    try {
+      const [todayRes, recordsRes, medsRes] = await Promise.all([
+        doctorApi.getTodayAppointments(),
+        doctorApi.getTreatmentRecords(),
+        doctorApi.getDepartmentMedicines()
+      ]);
+      if (todayRes.success) setTodayAppointments(todayRes.data);
+      if (recordsRes.success) setRecords(recordsRes.data);
+      if (medsRes.success) setDepartmentMedicines(medsRes.data);
+    } catch (err) {
+      showToast('Error loading data', 'error');
+    }
+  };
+
+  // --- Click Outside logic ---
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (patientDropdownRef.current && !patientDropdownRef.current.contains(event.target as Node)) setShowPatientDropdown(false);
+      if (medicineDropdownRef.current && !medicineDropdownRef.current.contains(event.target as Node)) setShowMedicineDropdown(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // --- Patient Autocomplete Logic (Filters against Today's Appointments) ---
+  const handlePatientSearch = (query: string) => {
+    setPatientQuery(query);
+    if (query.length > 0) {
+      const filtered = todayAppointments.filter(appt => 
+        appt.patient_id.firstName.toLowerCase().includes(query.toLowerCase()) ||
+        appt.patient_id.lastName.toLowerCase().includes(query.toLowerCase()) ||
+        appt.patient_id._id.toLowerCase().includes(query.toLowerCase())
+      );
+      setPatientSuggestions(filtered);
+      setShowPatientDropdown(true);
+
+      if (filtered.length === 0 && query.length > 2) {
+        showToast("No appointment found for this patient today.", "warning");
+      }
+    } else {
+      setPatientSuggestions([]);
+      setShowPatientDropdown(false);
+    }
+  };
+
+  const selectPatient = (appt: any) => {
+    setSelectedRecordId(appt._id); // Store the actual Treatment Record ID
+    setPatientQuery(`${appt.patient_id.firstName} ${appt.patient_id.lastName} (${appt.patient_id._id})`);
+    setFormData(prev => ({ ...prev, complaint: appt.chiefComplaint })); // Auto-fill complaint
+    setShowPatientDropdown(false);
+  };
+
+  // --- Medicine Autocomplete Logic ---
+  const handleMedicineSearch = (query: string) => {
+    setMedicineQuery(query);
+    setFormData(prev => ({ ...prev, medicineName: query }));
+    const filtered = departmentMedicines.filter(m => m.toLowerCase().includes(query.toLowerCase()));
+    setMedicineSuggestions(filtered);
+    setShowMedicineDropdown(true);
+  };
+
+  const selectMedicine = (medicine: string) => {
+    setFormData(prev => ({ ...prev, medicineName: medicine }));
+    setMedicineQuery(medicine);
+    setShowMedicineDropdown(false);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isEditing) {
-      setRecords(records.map(r => r.id === isEditing ? { ...formData, id: isEditing } : r));
-      setIsEditing(null);
-    } else {
-      const newRecord: TreatmentRecord = {
-        ...formData,
-        id: `TR-${Math.floor(Math.random() * 10000)}`
-      };
-      setRecords([newRecord, ...records]);
+    if (!selectedRecordId) {
+      return showToast("Please select a valid patient appointment from the dropdown.", "error");
     }
-    
-    // Reset form
-    setFormData({
-      date: new Date().toISOString().split('T')[0], patientName: '', complaint: '', diagnosis: '', treatmentPrescribed: '', followUpDate: '', followUpInstruction: '', outcomeStatus: 'Ongoing', additionalNotes: '', medicineName: '', frequency: '', durationDays: '', medNotes: ''
-    });
-    alert(isEditing ? "Record updated successfully!" : "Record created successfully!");
+
+    // Format duration to append "days" safely
+    const formattedDuration = formData.durationDays.replace(/\D/g, ''); 
+    const finalDuration = formattedDuration ? `${formattedDuration} days` : '';
+
+    const payload = {
+      ...formData,
+      durationDays: finalDuration
+    };
+
+    try {
+      const res = await doctorApi.updateTreatmentRecord(selectedRecordId, payload);
+      if (res.success) {
+        showToast(isEditing ? "Record updated successfully!" : "Record saved successfully!", "success");
+        loadInitialData(); // Refresh the table
+        cancelEdit();
+      } else {
+        showToast(res.message || "Failed to save record", "error");
+      }
+    } catch (err) {
+      showToast("Network error while saving record", "error");
+    }
   };
 
-  const handleEditClick = (record: TreatmentRecord) => {
-    setIsEditing(record.id);
+  const handleEditClick = (record: any) => {
+    setIsEditing(record._id);
+    setSelectedRecordId(record._id);
+    
     setFormData({
-      date: record.date, patientName: record.patientName, complaint: record.complaint, diagnosis: record.diagnosis, treatmentPrescribed: record.treatmentPrescribed, followUpDate: record.followUpDate, followUpInstruction: record.followUpInstruction, outcomeStatus: record.outcomeStatus, additionalNotes: record.additionalNotes, medicineName: record.medicineName, frequency: record.frequency, durationDays: record.durationDays, medNotes: record.medNotes
+      date: new Date(record.visitDate).toISOString().split('T')[0],
+      complaint: record.chiefComplaint || '',
+      diagnosis: record.diagnosis || '',
+      treatmentPrescribed: record.treatmentPrescribed || '',
+      followUpDate: record.followUpDate ? new Date(record.followUpDate).toISOString().split('T')[0] : '',
+      followUpInstruction: record.followUpInstruction || '',
+      outcomeStatus: record.outcomeStatus || '',
+      additionalNotes: record.additionalNotes || '',
+      medicineName: record.medicineName || '',
+      frequency: record.frequency || '',
+      durationDays: record.durationDays ? record.durationDays.replace(/\D/g, '') : '',
+      medNotes: record.medNotes || ''
     });
+
+    setPatientQuery(`${record.patient_id.firstName} ${record.patient_id.lastName} (${record.patient_id._id})`);
+    setMedicineQuery(record.medicineName || '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const cancelEdit = () => {
     setIsEditing(null);
+    setSelectedRecordId(null);
+    setPatientQuery('');
+    setMedicineQuery('');
     setFormData({
-      date: new Date().toISOString().split('T')[0], patientName: '', complaint: '', diagnosis: '', treatmentPrescribed: '', followUpDate: '', followUpInstruction: '', outcomeStatus: 'Ongoing', additionalNotes: '', medicineName: '', frequency: '', durationDays: '', medNotes: ''
+      date: new Date().toISOString().split('T')[0], complaint: '', diagnosis: '', treatmentPrescribed: '', followUpDate: '', followUpInstruction: '', outcomeStatus: '', additionalNotes: '', medicineName: '', frequency: '', durationDays: '', medNotes: ''
     });
   };
 
@@ -74,21 +196,33 @@ const TreatmentRecordsView: React.FC = () => {
     setIsExportModalOpen(false);
   };
 
-  // Filter records based on search query
-  const filteredRecords = records.filter(record => 
-    record.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    record.diagnosis.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    record.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredRecords = records.filter(record => {
+    const pName = `${record.patient_id?.firstName} ${record.patient_id?.lastName}`.toLowerCase();
+    const diag = (record.diagnosis || '').toLowerCase();
+    const query = searchQuery.toLowerCase();
+    return pName.includes(query) || diag.includes(query);
+  });
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
       
+      {/* IN-VIEWPORT TOAST NOTIFICATION */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-top-4 ${
+          toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 
+          toast.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+          'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          {toast.type === 'success' ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
+          <span className="font-semibold">{toast.message}</span>
+        </div>
+      )}
+
       {/* FORM SECTION */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative z-20">
         <div className={`px-6 py-4 border-b flex justify-between items-center ${isEditing ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
           <h2 className={`text-lg font-bold ${isEditing ? 'text-amber-800' : 'text-slate-800'}`}>
-            {isEditing ? 'Edit Treatment Record' : 'Create Treatment Record'}
+            {isEditing ? 'Edit Treatment Record' : 'Complete Treatment Record'}
           </h2>
           {isEditing && (
             <span className="text-xs font-bold uppercase tracking-wider bg-amber-200 text-amber-800 px-3 py-1 rounded-full">Editing Mode</span>
@@ -103,15 +237,41 @@ const TreatmentRecordsView: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Date</label>
-                <input required type="date" name="date" value={formData.date} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" />
+                <input required type="date" name="date" value={formData.date} disabled className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 text-sm cursor-not-allowed" />
               </div>
-              <div className="space-y-2">
+              
+              {/* Autocomplete Patient Search */}
+              <div className="space-y-2 relative" ref={patientDropdownRef}>
                 <label className="text-sm font-semibold text-slate-700">Patient Name</label>
-                <input required type="text" name="patientName" placeholder="e.g. John Doe" value={formData.patientName} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" />
+                <input 
+                  required 
+                  type="text" 
+                  value={patientQuery}
+                  onChange={(e) => handlePatientSearch(e.target.value)}
+                  onFocus={() => { if(patientSuggestions.length > 0) setShowPatientDropdown(true) }}
+                  disabled={isEditing !== null}
+                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none ${isEditing ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' : 'bg-slate-50 border-slate-200'}`} 
+                  placeholder="Search today's appointments..." 
+                />
+                {showPatientDropdown && patientSuggestions.length > 0 && (
+                  <ul className="absolute z-30 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                    {patientSuggestions.map((appt) => (
+                      <li 
+                        key={appt._id} 
+                        onClick={() => selectPatient(appt)}
+                        className="px-4 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 flex justify-between items-center"
+                      >
+                        <span className="font-semibold text-slate-800">{appt.patient_id.firstName} {appt.patient_id.lastName}</span>
+                        <span className="text-xs text-slate-500 font-mono">{appt.patient_id._id}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
+
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-semibold text-slate-700">Patient Complaint</label>
-                <textarea required name="complaint" rows={2} value={formData.complaint} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none" placeholder="Describe patient symptoms..."></textarea>
+                <label className="text-sm font-semibold text-slate-700">Patient Complaint (Auto-fetched)</label>
+                <textarea required name="complaint" rows={2} value={formData.complaint} onChange={handleInputChange} disabled className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 text-sm resize-none cursor-not-allowed" placeholder="Select a patient to load their complaint..."></textarea>
               </div>
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-semibold text-slate-700">Diagnosis</label>
@@ -129,18 +289,46 @@ const TreatmentRecordsView: React.FC = () => {
                 <textarea required name="treatmentPrescribed" rows={2} value={formData.treatmentPrescribed} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none" placeholder="Dietary restrictions, physical therapy, etc..."></textarea>
               </div>
               
-              {/* Specific Medicine block */}
-              <div className="space-y-2">
+              {/* Autocomplete Medicine */}
+              <div className="space-y-2 relative" ref={medicineDropdownRef}>
                 <label className="text-sm font-semibold text-slate-700">Medicine Name</label>
-                <input required type="text" name="medicineName" value={formData.medicineName} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. Amoxicillin 500mg" />
+                <input 
+                  required 
+                  type="text" 
+                  value={medicineQuery}
+                  onChange={(e) => handleMedicineSearch(e.target.value)}
+                  onFocus={() => { 
+                    setMedicineSuggestions(departmentMedicines);
+                    setShowMedicineDropdown(true);
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" 
+                  placeholder="e.g. Amoxicillin 500mg" 
+                />
+                {showMedicineDropdown && medicineSuggestions.length > 0 && (
+                  <ul className="absolute z-30 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                    {medicineSuggestions.map((m) => (
+                      <li 
+                        key={m} 
+                        onClick={() => selectMedicine(m)}
+                        className="px-4 py-2 hover:bg-slate-50 cursor-pointer text-sm font-medium text-slate-800 border-b border-slate-50 last:border-0"
+                      >
+                        {m}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Frequency</label>
                 <input required type="text" name="frequency" value={formData.frequency} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. Twice a day after meals" />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Duration (Days)</label>
-                <input required type="number" min="1" name="durationDays" value={formData.durationDays} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. 5" />
+                <div className="relative">
+                  <input required type="number" min="1" name="durationDays" value={formData.durationDays} onChange={handleInputChange} className="w-full pl-4 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. 5" />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">Days</span>
+                </div>
               </div>
               <div className="space-y-2 md:col-span-3">
                 <label className="text-sm font-semibold text-slate-700">Medication Notes</label>
@@ -159,7 +347,8 @@ const TreatmentRecordsView: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Outcome Status</label>
-                <select name="outcomeStatus" value={formData.outcomeStatus} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none cursor-pointer">
+                <select required name="outcomeStatus" value={formData.outcomeStatus} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none cursor-pointer">
+                  <option value="" disabled>Select Outcome Status</option>
                   <option value="Ongoing">Ongoing</option>
                   <option value="Resolved">Resolved</option>
                   <option value="Referred">Referred</option>
@@ -171,7 +360,7 @@ const TreatmentRecordsView: React.FC = () => {
                 <input type="text" name="followUpInstruction" value={formData.followUpInstruction} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="What to test or check next visit..." />
               </div>
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-semibold text-slate-700">Additional Clinic Notes</label>
+                <label className="text-sm font-semibold text-slate-700">Additional Clinic Notes (Optional)</label>
                 <textarea name="additionalNotes" rows={2} value={formData.additionalNotes} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none" placeholder="Private internal notes..."></textarea>
               </div>
             </div>
@@ -193,7 +382,7 @@ const TreatmentRecordsView: React.FC = () => {
       </div>
 
       {/* TABLE SECTION */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative z-10">
         <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
           <h3 className="font-bold text-slate-800">Recent Treatment Records</h3>
           <div className="flex items-center gap-3 w-full md:w-auto">
@@ -221,7 +410,7 @@ const TreatmentRecordsView: React.FC = () => {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-6 py-3 font-semibold text-slate-700">Date & ID</th>
+                <th className="px-6 py-3 font-semibold text-slate-700">Date</th>
                 <th className="px-6 py-3 font-semibold text-slate-700">Patient</th>
                 <th className="px-6 py-3 font-semibold text-slate-700">Diagnosis</th>
                 <th className="px-6 py-3 font-semibold text-slate-700">Status</th>
@@ -232,16 +421,17 @@ const TreatmentRecordsView: React.FC = () => {
               {filteredRecords.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                    {searchQuery ? "No records match your search." : "No records found. Create one above."}
+                    {searchQuery ? "No records match your search." : "No records found. Complete one above."}
                   </td>
                 </tr>
               ) : filteredRecords.map((record) => (
-                <tr key={record.id} className={`hover:bg-slate-50/80 transition-colors ${isEditing === record.id ? 'bg-amber-50/50' : ''}`}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <p className="font-semibold text-slate-900">{record.date}</p>
-                    <p className="text-xs text-slate-500 font-mono">{record.id}</p>
+                <tr key={record._id} className={`hover:bg-slate-50/80 transition-colors ${isEditing === record._id ? 'bg-amber-50/50' : ''}`}>
+                  <td className="px-6 py-4 whitespace-nowrap font-semibold text-slate-900">
+                    {new Date(record.visitDate).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 font-medium text-slate-800">{record.patientName}</td>
+                  <td className="px-6 py-4">
+                    <p className="font-medium text-slate-800">{record.patient_id?.firstName} {record.patient_id?.lastName}</p>
+                  </td>
                   <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate" title={record.diagnosis}>{record.diagnosis}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2.5 py-1 rounded-md text-xs font-semibold border ${

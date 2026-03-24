@@ -7,11 +7,23 @@ const treatmentRecordSchema = new mongoose.Schema({
   patient_id: { type: String, ref: 'PatientProfile', required: true },
   visitDate: { type: Date, required: true },
   chiefComplaint: { type: String, required: true },
+  
+  // NEW: Clinical Fields added by the Doctor
+  diagnosis: { type: String },
+  treatmentPrescribed: { type: String },
+  medicineName: { type: String },
+  frequency: { type: String },
+  durationDays: { type: String }, // Saved as String to include " days" label
+  medNotes: { type: String },
+  followUpDate: { type: Date },
+  outcomeStatus: { type: String, enum: ['Ongoing', 'Resolved', 'Referred', 'Follow up required'] },
+  followUpInstruction: { type: String },
+  additionalNotes: { type: String },
+
   is_deleted: { type: Boolean, default: false },
   deleted_at: { type: Date, default: null }
 }, { timestamps: true });
 
-// Pre-save hook for custom ID (HCTH00000000001)
 treatmentRecordSchema.pre('save', async function (next) {
   if (this.isNew) {
     try {
@@ -20,7 +32,6 @@ treatmentRecordSchema.pre('save', async function (next) {
         { $inc: { seq: 1 } },
         { new: true, upsert: true }
       );
-      // HCTH followed by 11 digits
       this._id = `HCTH${String(counter.seq).padStart(11, '0')}`;
     } catch (error) {
       return next(error);

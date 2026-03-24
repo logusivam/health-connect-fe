@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDoctorProfile, updateDoctorProfile, getDoctorDirectory, searchPatients,
-    getDepartmentMedicines, getFlags, createFlag, updateFlag
+    getDepartmentMedicines, getFlags, createFlag, updateFlag, getTodayAppointments,
+    getTreatmentRecords, updateTreatmentRecord
  } from '../../controllers/v1/doctor.controller.js';
 import { protect } from '../../middlewares/auth.middleware.js';
 
@@ -15,5 +16,9 @@ router.get('/medicines', protect, getDepartmentMedicines);
 router.get('/flags', protect, getFlags);
 router.post('/flags', protect, createFlag);
 router.put('/flags/:id', protect, updateFlag);
+// Clinical Record Routes
+router.get('/appointments/today', protect, getTodayAppointments);
+router.get('/treatment-records', protect, getTreatmentRecords);
+router.put('/treatment-records/:id', protect, updateTreatmentRecord);
 
 export default router;
