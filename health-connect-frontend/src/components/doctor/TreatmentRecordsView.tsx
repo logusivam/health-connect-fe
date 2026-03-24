@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Edit, Save, Search, Download, X, FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Edit, Save, Search, Download, X, FileText, AlertTriangle, CheckCircle2, Plus, Pill } from 'lucide-react';
 import { doctorApi } from '../../services/api';
+
+// Interface for the local medication state
+interface MedicationEntry {
+  name: string;
+  frequency: string;
+  duration: string;
+}
 
 const TreatmentRecordsView: React.FC = () => {
   const [records, setRecords] = useState<any[]>([]);
@@ -8,17 +15,16 @@ const TreatmentRecordsView: React.FC = () => {
   const [departmentMedicines, setDepartmentMedicines] = useState<string[]>([]);
   
   const [isEditing, setIsEditing] = useState<string | null>(null);
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null); // Links form to the actual DB Record ID
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
 
   // In-Viewport Notification State
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
   
-  // Search & Export State
   const [searchQuery, setSearchQuery] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportTimeframe, setExportTimeframe] = useState('this_month');
 
-  // Form State
+  // Base Form State
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     complaint: '',
@@ -28,13 +34,19 @@ const TreatmentRecordsView: React.FC = () => {
     followUpInstruction: '',
     outcomeStatus: '',
     additionalNotes: '',
-    medicineName: '',
-    frequency: '',
-    durationDays: '',
     medNotes: ''
   });
 
-  // Autocomplete UI States & Refs
+  // NEW: Medication Array State
+  const [medicationsList, setMedicationsList] = useState<MedicationEntry[]>([]);
+
+  // Current Medication Input State (before adding to list)
+  const [currentMed, setCurrentMed] = useState({
+    name: '',
+    frequency: '',
+    durationDays: ''
+  });
+
   const patientDropdownRef = useRef<HTMLDivElement>(null);
   const medicineDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +54,6 @@ const TreatmentRecordsView: React.FC = () => {
   const [patientSuggestions, setPatientSuggestions] = useState<any[]>([]);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   
-  const [medicineQuery, setMedicineQuery] = useState('');
   const [medicineSuggestions, setMedicineSuggestions] = useState<string[]>([]);
   const [showMedicineDropdown, setShowMedicineDropdown] = useState(false);
 
@@ -70,7 +81,6 @@ const TreatmentRecordsView: React.FC = () => {
     }
   };
 
-  // --- Click Outside logic ---
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (patientDropdownRef.current && !patientDropdownRef.current.contains(event.target as Node)) setShowPatientDropdown(false);
@@ -80,7 +90,6 @@ const TreatmentRecordsView: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // --- Patient Autocomplete Logic (Filters against Today's Appointments) ---
   const handlePatientSearch = (query: string) => {
     setPatientQuery(query);
     if (query.length > 0) {
@@ -102,24 +111,21 @@ const TreatmentRecordsView: React.FC = () => {
   };
 
   const selectPatient = (appt: any) => {
-    setSelectedRecordId(appt._id); // Store the actual Treatment Record ID
+    setSelectedRecordId(appt._id);
     setPatientQuery(`${appt.patient_id.firstName} ${appt.patient_id.lastName} (${appt.patient_id._id})`);
-    setFormData(prev => ({ ...prev, complaint: appt.chiefComplaint })); // Auto-fill complaint
+    setFormData(prev => ({ ...prev, complaint: appt.chiefComplaint }));
     setShowPatientDropdown(false);
   };
 
-  // --- Medicine Autocomplete Logic ---
   const handleMedicineSearch = (query: string) => {
-    setMedicineQuery(query);
-    setFormData(prev => ({ ...prev, medicineName: query }));
+    setCurrentMed(prev => ({ ...prev, name: query }));
     const filtered = departmentMedicines.filter(m => m.toLowerCase().includes(query.toLowerCase()));
     setMedicineSuggestions(filtered);
     setShowMedicineDropdown(true);
   };
 
   const selectMedicine = (medicine: string) => {
-    setFormData(prev => ({ ...prev, medicineName: medicine }));
-    setMedicineQuery(medicine);
+    setCurrentMed(prev => ({ ...prev, name: medicine }));
     setShowMedicineDropdown(false);
   };
 
@@ -128,26 +134,59 @@ const TreatmentRecordsView: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleMedInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setCurrentMed(prev => ({ ...prev, [name]: value }));
+  };
+
+  // --- Add Medicine to Array ---
+  const handleAddMedicine = () => {
+    if (!currentMed.name.trim() || !currentMed.frequency.trim() || !currentMed.durationDays.trim()) {
+      showToast("Please fill all medicine fields before adding.", "error");
+      return;
+    }
+
+    const formattedDuration = currentMed.durationDays.replace(/\D/g, ''); 
+    const finalDuration = formattedDuration ? `${formattedDuration} days` : '';
+
+    const newMed: MedicationEntry = {
+      name: currentMed.name,
+      frequency: currentMed.frequency,
+      duration: finalDuration
+    };
+
+    setMedicationsList([...medicationsList, newMed]);
+    setCurrentMed({ name: '', frequency: '', durationDays: '' }); // Clear inputs
+  };
+
+  // --- Remove Medicine from Array ---
+  const handleRemoveMedicine = (index: number) => {
+    const newList = [...medicationsList];
+    newList.splice(index, 1);
+    setMedicationsList(newList);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRecordId) {
       return showToast("Please select a valid patient appointment from the dropdown.", "error");
     }
 
-    // Format duration to append "days" safely
-    const formattedDuration = formData.durationDays.replace(/\D/g, ''); 
-    const finalDuration = formattedDuration ? `${formattedDuration} days` : '';
+    // Check if the user forgot to add a filled medication
+    if (currentMed.name.trim() && !isEditing) {
+       return showToast("You have un-added medicine data. Click 'Add Medicine' first.", "warning");
+    }
 
     const payload = {
       ...formData,
-      durationDays: finalDuration
+      medications: medicationsList // Send the array instead of single strings
     };
 
     try {
       const res = await doctorApi.updateTreatmentRecord(selectedRecordId, payload);
       if (res.success) {
         showToast(isEditing ? "Record updated successfully!" : "Record saved successfully!", "success");
-        loadInitialData(); // Refresh the table
+        loadInitialData(); 
         cancelEdit();
       } else {
         showToast(res.message || "Failed to save record", "error");
@@ -170,14 +209,13 @@ const TreatmentRecordsView: React.FC = () => {
       followUpInstruction: record.followUpInstruction || '',
       outcomeStatus: record.outcomeStatus || '',
       additionalNotes: record.additionalNotes || '',
-      medicineName: record.medicineName || '',
-      frequency: record.frequency || '',
-      durationDays: record.durationDays ? record.durationDays.replace(/\D/g, '') : '',
       medNotes: record.medNotes || ''
     });
 
+    setMedicationsList(record.medications || []);
+    setCurrentMed({ name: '', frequency: '', durationDays: '' });
+
     setPatientQuery(`${record.patient_id.firstName} ${record.patient_id.lastName} (${record.patient_id._id})`);
-    setMedicineQuery(record.medicineName || '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -185,9 +223,10 @@ const TreatmentRecordsView: React.FC = () => {
     setIsEditing(null);
     setSelectedRecordId(null);
     setPatientQuery('');
-    setMedicineQuery('');
+    setMedicationsList([]);
+    setCurrentMed({ name: '', frequency: '', durationDays: '' });
     setFormData({
-      date: new Date().toISOString().split('T')[0], complaint: '', diagnosis: '', treatmentPrescribed: '', followUpDate: '', followUpInstruction: '', outcomeStatus: '', additionalNotes: '', medicineName: '', frequency: '', durationDays: '', medNotes: ''
+      date: new Date().toISOString().split('T')[0], complaint: '', diagnosis: '', treatmentPrescribed: '', followUpDate: '', followUpInstruction: '', outcomeStatus: '', additionalNotes: '', medNotes: ''
     });
   };
 
@@ -206,7 +245,6 @@ const TreatmentRecordsView: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
       
-      {/* IN-VIEWPORT TOAST NOTIFICATION */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-top-4 ${
           toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 
@@ -240,7 +278,6 @@ const TreatmentRecordsView: React.FC = () => {
                 <input required type="date" name="date" value={formData.date} disabled className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 text-sm cursor-not-allowed" />
               </div>
               
-              {/* Autocomplete Patient Search */}
               <div className="space-y-2 relative" ref={patientDropdownRef}>
                 <label className="text-sm font-semibold text-slate-700">Patient Name</label>
                 <input 
@@ -283,19 +320,19 @@ const TreatmentRecordsView: React.FC = () => {
           {/* Section 2: Treatment & Medication */}
           <div>
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Treatment & Medication Prescribed</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2 md:col-span-3">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+              <div className="space-y-2 md:col-span-12 mb-2">
                 <label className="text-sm font-semibold text-slate-700">General Treatment Plan</label>
                 <textarea required name="treatmentPrescribed" rows={2} value={formData.treatmentPrescribed} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none" placeholder="Dietary restrictions, physical therapy, etc..."></textarea>
               </div>
               
-              {/* Autocomplete Medicine */}
-              <div className="space-y-2 relative" ref={medicineDropdownRef}>
+              {/* Dynamic Medication Input Block */}
+              <div className="space-y-2 relative md:col-span-4" ref={medicineDropdownRef}>
                 <label className="text-sm font-semibold text-slate-700">Medicine Name</label>
                 <input 
-                  required 
                   type="text" 
-                  value={medicineQuery}
+                  name="name"
+                  value={currentMed.name}
                   onChange={(e) => handleMedicineSearch(e.target.value)}
                   onFocus={() => { 
                     setMedicineSuggestions(departmentMedicines);
@@ -319,18 +356,60 @@ const TreatmentRecordsView: React.FC = () => {
                 )}
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 md:col-span-4">
                 <label className="text-sm font-semibold text-slate-700">Frequency</label>
-                <input required type="text" name="frequency" value={formData.frequency} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. Twice a day after meals" />
+                <input type="text" name="frequency" value={currentMed.frequency} onChange={handleMedInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. Twice a day" />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Duration (Days)</label>
+              
+              <div className="space-y-2 md:col-span-3">
+                <label className="text-sm font-semibold text-slate-700">Duration</label>
                 <div className="relative">
-                  <input required type="number" min="1" name="durationDays" value={formData.durationDays} onChange={handleInputChange} className="w-full pl-4 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. 5" />
+                  <input type="number" min="1" name="durationDays" value={currentMed.durationDays} onChange={handleMedInputChange} className="w-full pl-4 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. 5" />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">Days</span>
                 </div>
               </div>
-              <div className="space-y-2 md:col-span-3">
+
+              <div className="md:col-span-1 flex items-end pb-0.5">
+                <button 
+                  type="button" 
+                  onClick={handleAddMedicine}
+                  className="w-full h-[42px] flex items-center justify-center bg-teal-50 text-teal-700 hover:bg-teal-100 hover:text-teal-800 border border-teal-200 rounded-xl transition-colors"
+                  title="Add Medicine"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Display Added Medications */}
+              {medicationsList.length > 0 && (
+                <div className="md:col-span-12 mt-4 mb-2">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Prescribed Medications</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {medicationsList.map((med, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-white border border-blue-100 shadow-sm rounded-xl">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 p-1.5 bg-blue-50 text-blue-600 rounded-lg">
+                            <Pill className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">{med.name}</p>
+                            <p className="text-xs font-medium text-slate-500">{med.frequency} • {med.duration}</p>
+                          </div>
+                        </div>
+                        <button 
+                          type="button" 
+                          onClick={() => handleRemoveMedicine(index)}
+                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 md:col-span-12">
                 <label className="text-sm font-semibold text-slate-700">Medication Notes</label>
                 <input type="text" name="medNotes" value={formData.medNotes} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="Optional warnings or instructions..." />
               </div>

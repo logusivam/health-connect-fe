@@ -8,12 +8,16 @@ const treatmentRecordSchema = new mongoose.Schema({
   visitDate: { type: Date, required: true },
   chiefComplaint: { type: String, required: true },
   
-  // NEW: Clinical Fields added by the Doctor
   diagnosis: { type: String },
   treatmentPrescribed: { type: String },
-  medicineName: { type: String },
-  frequency: { type: String },
-  durationDays: { type: String }, // Saved as String to include " days" label
+  
+  // CHANGED: Array of Medication Objects
+  medications: [{
+    name: { type: String, required: true },
+    frequency: { type: String, required: true },
+    duration: { type: String, required: true }
+  }],
+  
   medNotes: { type: String },
   followUpDate: { type: Date },
   outcomeStatus: { type: String, enum: ['Ongoing', 'Resolved', 'Referred', 'Follow up required'] },
