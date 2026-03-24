@@ -35,8 +35,15 @@ export const doctorApi = {
   getProfile: () => fetchWithCookies('/doctors/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/doctors/profile', { method: 'PUT', body: JSON.stringify(data) }),
   // ADDED: Fetch all doctors for the booking page
-    getDirectory: () => fetchWithCookies('/doctors/directory', { method: 'GET' }),
-};
+  getDirectory: () => fetchWithCookies('/doctors/directory', { method: 'GET' }),
+  // ... unsuitable medicine flagging routes ...
+  searchPatients: (q: string) => fetchWithCookies(`/doctors/patients/search?q=${q}`, { method: 'GET' }),
+  getDepartmentMedicines: () => fetchWithCookies('/doctors/medicines', { method: 'GET' }),
+  getFlags: () => fetchWithCookies('/doctors/flags', { method: 'GET' }),
+  createFlag: (data: any) => fetchWithCookies('/doctors/flags', { method: 'POST', body: JSON.stringify(data) }),
+  updateFlag: (id: string, data: any) => fetchWithCookies(`/doctors/flags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  };
 
 // ADDED: New API group for metadata
 export const metadataApi = {
