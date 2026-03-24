@@ -28,7 +28,8 @@ export const patientApi = {
   getProfile: () => fetchWithCookies('/patients/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/patients/profile', { method: 'PUT', body: JSON.stringify(data) }),
   bookAppointment: (data: any) => fetchWithCookies('/patients/appointments', { method: 'POST', body: JSON.stringify(data) }),
-  getAppointments: () => fetchWithCookies('/patients/get-appointments', { method: 'GET' }) 
+  getAppointments: () => fetchWithCookies('/patients/get-appointments', { method: 'GET' }), 
+  getFlags: () => fetchWithCookies('/patients/flags', { method: 'GET' })
 };
 
 export const doctorApi = {
