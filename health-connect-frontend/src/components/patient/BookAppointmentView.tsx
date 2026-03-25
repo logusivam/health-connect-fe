@@ -10,10 +10,10 @@ interface BookedAppointment {
   department: string;
   problem: string;
   date: string;
-  status: 'Upcoming' | 'Ongoing' | 'Completed';
+  followUpDate?: string | null;
+  status: 'Upcoming' | 'Ongoing' | 'Completed' | 'Referred' | 'Follow up required';
 }
 
-// ADDED: Interface to accept the highlighted prop
 interface BookAppointmentViewProps {
   highlightedRecordId?: string | null;
 }
@@ -39,19 +39,25 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
 
   const APPOINTMENT_FEE = 500; 
 
-  // --- Real-time Status Calculator ---
-  const calculateStatus = (visitDate: string): 'Upcoming' | 'Ongoing' | 'Completed' => {
+  // --- NEW: Dynamic Real-time Status Calculator ---
+  const calculateStatus = (record: any): BookedAppointment['status'] => {
+    // 1. Check for Doctor-Defined Outcomes first
+    if (record.outcomeStatus === 'Resolved') return 'Completed';
+    if (record.outcomeStatus === 'Referred' && record.followUpDate) return 'Referred';
+    if (record.outcomeStatus === 'Follow up required' && record.followUpDate) return 'Follow up required';
+
+    // 2. Fallback to Date-based logic for pending/new appointments
     const today = new Date();
     today.setHours(0, 0, 0, 0); 
     
-    const apptDate = new Date(visitDate);
+    const apptDate = new Date(record.visitDate);
     apptDate.setHours(0, 0, 0, 0);
 
     const timeDiff = apptDate.getTime() - today.getTime();
 
     if (timeDiff > 0) return 'Upcoming';
     if (timeDiff === 0) return 'Ongoing';
-    return 'Completed';
+    return 'Completed'; // If in the past and no outcome set yet
   };
 
   useEffect(() => {
@@ -75,7 +81,8 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
             department: record.doctor_id.department || 'General',
             problem: record.chiefComplaint,
             date: new Date(record.visitDate).toISOString().split('T')[0],
-            status: calculateStatus(record.visitDate)
+            followUpDate: record.followUpDate,
+            status: calculateStatus(record)
           }));
           setAppointments(formattedAppts);
         }
@@ -88,7 +95,6 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     fetchBookingData();
   }, []);
 
-  // NEW: Scroll to the highlighted record when the component loads or records change
   useEffect(() => {
     if (highlightedRecordId) {
       setTimeout(() => {
@@ -96,7 +102,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-      }, 100); // Slight delay to ensure DOM is fully painted
+      }, 100); 
     }
   }, [highlightedRecordId, appointments]);
 
@@ -133,13 +139,16 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
       if (res.success) {
         setPaymentStep('SUCCESS');
         
+        const newRecordObj = { visitDate: date }; // Temp object to calculate initial status
+        
         const newAppointment: BookedAppointment = {
           id: res.data._id,
           doctorName: `Dr. ${selectedDoctorDetails.firstName} ${selectedDoctorDetails.lastName}`,
           department: department || selectedDoctorDetails?.department || 'General Practice',
           problem: complaints,
           date: date,
-          status: calculateStatus(date)
+          followUpDate: null,
+          status: calculateStatus(newRecordObj)
         };
         
         setAppointments([newAppointment, ...appointments]);
@@ -166,8 +175,10 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     return <div className="text-center py-20 text-slate-500">Loading booking data...</div>;
   }
 
+  // Categorize Appointments
   const activeAppointments = appointments.filter(a => a.status === 'Upcoming' || a.status === 'Ongoing');
-  const completedAppointments = appointments.filter(a => a.status === 'Completed');
+  const completedAppointments = appointments.filter(a => a.status === 'Completed' || a.status === 'Referred');
+  const followUpAppointments = appointments.filter(a => a.status === 'Follow up required');
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -295,6 +306,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                     <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Chief Complaints</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Date</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Follow-up Date</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
                   </tr>
                 </thead>
@@ -302,8 +314,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                   {activeAppointments.map((appt) => (
                     <tr 
                       key={appt.id} 
-                      id={`appointment-${appt.id}`} // ADDED ID for targeting
-                      // ADDED Highlight Logic
+                      id={`appointment-${appt.id}`} 
                       className={`transition-all duration-500 ${
                         highlightedRecordId === appt.id ? 'bg-blue-50/80 border-l-4 border-blue-500' : 'hover:bg-slate-50/50 border-l-4 border-transparent'
                       }`}
@@ -312,6 +323,9 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                       <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
                       <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
                       <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
+                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
+                        {appt.followUpDate ? new Date(appt.followUpDate).toLocaleDateString() : 'N/A'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
                           appt.status === 'Ongoing' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
@@ -341,18 +355,65 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                     <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Chief Complaints</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Date</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Follow-up Date</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {completedAppointments.map((appt) => (
-                    <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors border-l-4 border-transparent">
                       <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
                       <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
                       <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
                       <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
+                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
+                        {appt.followUpDate ? new Date(appt.followUpDate).toLocaleDateString() : 'N/A'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-100">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          appt.status === 'Referred' ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-green-50 text-green-700 border border-green-100'
+                        }`}>
+                          {appt.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Follow-up Required Section --- */}
+      {followUpAppointments.length > 0 && (
+        <div className="space-y-4 pt-6">
+          <h3 className="text-xl font-bold text-slate-900">Follow-up Required Appointments</h3>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md ring-1 ring-orange-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-orange-50 border-b border-orange-100">
+                  <tr>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Doctor Name</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Chief Complaints</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Original Date</th>
+                    <th className="px-6 py-4 font-bold text-orange-700">Must Book Before</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {followUpAppointments.map((appt) => (
+                    <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors border-l-4 border-transparent">
+                      <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
+                      <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
+                      <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
+                      <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
+                      <td className="px-6 py-4 font-bold text-orange-600 whitespace-nowrap">
+                        {appt.followUpDate ? new Date(appt.followUpDate).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 shadow-sm">
                           {appt.status}
                         </span>
                       </td>
