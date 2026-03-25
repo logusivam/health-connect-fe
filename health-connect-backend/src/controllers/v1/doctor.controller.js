@@ -113,8 +113,11 @@ export const getDepartmentMedicines = async (req, res) => {
 // 3. Get all flags (Active & Resolved)
 export const getFlags = async (req, res) => {
   try {
-    const flags = await UnsuitableMedicine.find()
-      .populate('patient_id', 'firstName lastName')
+    const doctor = await DoctorProfile.findOne({ user_id: req.user.id });
+    
+    // STRICT FILTER: Only get flags created by this specific doctor
+    const flags = await UnsuitableMedicine.find({ flagged_by_doctor_id: doctor._id })
+      .populate('patient_id', 'firstName lastName _id')
       .populate('flagged_by_doctor_id', 'firstName lastName')
       .sort({ createdAt: -1 });
     

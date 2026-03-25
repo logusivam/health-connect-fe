@@ -20,12 +20,13 @@ export default function DoctorDashboard() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
-  // Global State for Topbar
+  // NEW: State to handle cross-component routing and highlighting
+  const [highlightedRecordId, setHighlightedRecordId] = useState<string | null>(null);
+  
   const [userAvatar, setUserAvatar] = useState<string | undefined>(undefined);
   const [userName, setUserName] = useState<string>('');
   const [userSpecialization, setUserSpecialization] = useState<string>('');
 
-  // Fetch basic profile data on mount to populate the Topbar
   useEffect(() => {
     const initProfile = async () => {
       try {
@@ -50,14 +51,20 @@ export default function DoctorDashboard() {
     { id: 'PROFILE', label: 'My Profile', icon: User },
   ] as const;
 
-  const handleNavigate = (view: string) => {
+  // UPDATED: Now accepts an optional recordId to pass down
+  const handleNavigate = (view: string, recordId?: string) => {
     navigate(`/doctor/${view.toLowerCase()}`);
+    if (recordId) {
+      setHighlightedRecordId(recordId);
+      setTimeout(() => setHighlightedRecordId(null), 3000); 
+    } else {
+      setHighlightedRecordId(null);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
       
-      {/* Sidebar - Desktop */}
       <aside 
         className={`hidden lg:flex flex-col bg-slate-900 text-white min-h-screen sticky top-0 transition-all duration-300 ease-in-out relative z-20 ${
           isSidebarOpen ? 'w-72' : 'w-20'
@@ -109,10 +116,8 @@ export default function DoctorDashboard() {
         </nav>
       </aside>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         
-        {/* Topbar */}
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-10 transition-all duration-300">
           
           <div className="flex items-center gap-3 lg:hidden">
@@ -132,7 +137,6 @@ export default function DoctorDashboard() {
 
           <div className="flex items-center gap-4 cursor-pointer group" onClick={() => handleNavigate('PROFILE')}>
             <div className="text-right hidden sm:block">
-              {/* Using Dynamic State */}
               <p className="text-sm font-semibold text-slate-900 group-hover:text-teal-600 transition-colors">
                 {userName ? `Dr. ${userName}` : 'Loading...'}
               </p>
@@ -169,7 +173,10 @@ export default function DoctorDashboard() {
           <div key={activeView} className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both">
             {activeView === 'DASHBOARD' && <DashboardHome onNavigate={handleNavigate} />}
             {activeView === 'TREATMENT_HISTORY' && <TreatmentHistoryView />}
-            {activeView === 'TREATMENT_RECORDS' && <TreatmentRecordsView />}
+            
+            {/* UPDATED: Pass highlightedRecordId to Treatment Records */}
+            {activeView === 'TREATMENT_RECORDS' && <TreatmentRecordsView highlightedRecordId={highlightedRecordId} />}
+            
             {activeView === 'MEDICATION_FLAGS' && <MedicationFlagView />}
             {activeView === 'PROFILE' && (
               <DoctorProfileView 

@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Edit, Save, Search, Download, X, FileText, AlertTriangle, CheckCircle2, Plus, Pill } from 'lucide-react';
 import { doctorApi } from '../../services/api';
 
+interface TreatmentRecordsViewProps {
+  highlightedRecordId?: string | null; // NEW: Optional prop to highlight a specific record
+}
+
+
 // Interface for the local medication state
 interface MedicationEntry {
   name: string;
@@ -9,7 +14,7 @@ interface MedicationEntry {
   duration: string;
 }
 
-const TreatmentRecordsView: React.FC = () => {
+const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlightedRecordId }) => {
   const [records, setRecords] = useState<any[]>([]);
   const [todayAppointments, setTodayAppointments] = useState<any[]>([]);
   const [departmentMedicines, setDepartmentMedicines] = useState<string[]>([]);
@@ -85,6 +90,19 @@ const TreatmentRecordsView: React.FC = () => {
       showToast('Error loading data', 'error');
     }
   };
+
+  // NEW: Detect highlighted record from Dashboard click and auto-open it
+  useEffect(() => {
+    if (highlightedRecordId && todayAppointments.length > 0) {
+      // Find the record in the pending list
+      const pendingRecord = todayAppointments.find(r => r._id === highlightedRecordId);
+      
+      if (pendingRecord) {
+        // Trigger the exact same logic as clicking "Edit" manually
+        handleEditClick(pendingRecord);
+      }
+    }
+  }, [highlightedRecordId, todayAppointments]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
