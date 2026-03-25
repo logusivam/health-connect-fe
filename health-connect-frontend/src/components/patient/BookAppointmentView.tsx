@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Smartphone, CreditCard, Building, X, CheckCircle2 } from 'lucide-react';
+import { Calendar, Smartphone, CreditCard, Building, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { metadataApi, doctorApi, patientApi } from '../../services/api'; 
 
 type PaymentStep = 'HIDDEN' | 'SUMMARY' | 'OPTIONS' | 'SUCCESS';
 
 interface BookedAppointment {
   id: string;
+  doctorId: string; 
   doctorName: string;
   department: string;
   problem: string;
@@ -37,16 +38,22 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('HIDDEN');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
 
+  // In-Viewport Notification State
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
+
   const APPOINTMENT_FEE = 500; 
 
-  // --- NEW: Dynamic Real-time Status Calculator ---
+  const showToast = (message: string, type: 'success' | 'error' | 'warning') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  // --- Dynamic Real-time Status Calculator ---
   const calculateStatus = (record: any): BookedAppointment['status'] => {
-    // 1. Check for Doctor-Defined Outcomes first
     if (record.outcomeStatus === 'Resolved') return 'Completed';
     if (record.outcomeStatus === 'Referred' && record.followUpDate) return 'Referred';
     if (record.outcomeStatus === 'Follow up required' && record.followUpDate) return 'Follow up required';
 
-    // 2. Fallback to Date-based logic for pending/new appointments
     const today = new Date();
     today.setHours(0, 0, 0, 0); 
     
@@ -57,7 +64,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
 
     if (timeDiff > 0) return 'Upcoming';
     if (timeDiff === 0) return 'Ongoing';
-    return 'Completed'; // If in the past and no outcome set yet
+    return 'Completed'; 
   };
 
   useEffect(() => {
@@ -77,6 +84,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
         if (apptsRes.success) {
           const formattedAppts = apptsRes.data.map((record: any) => ({
             id: record._id,
+            doctorId: record.doctor_id._id || record.doctor_id, 
             doctorName: `Dr. ${record.doctor_id.firstName} ${record.doctor_id.lastName}`,
             department: record.doctor_id.department || 'General',
             problem: record.chiefComplaint,
@@ -87,7 +95,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
           setAppointments(formattedAppts);
         }
       } catch (error) {
-        console.error("Failed to load booking data");
+        showToast("Failed to load booking data.", "error");
       } finally {
         setIsLoading(false);
       }
@@ -115,15 +123,29 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
 
   const handleConfirmAppointmentClick = () => {
     if (!complaints.trim()) {
-      alert("Please provide your chief complaints.");
+      showToast("Please provide your chief complaints.", "warning");
       return;
     }
+
+    if (selectedDoctorDetails) {
+      const isDuplicate = appointments.some(appt => 
+        appt.doctorId === selectedDoctorDetails._id && 
+        appt.date === date && 
+        (appt.status === 'Upcoming' || appt.status === 'Ongoing') 
+      );
+
+      if (isDuplicate) {
+        showToast("You already have a pending appointment with this doctor on the selected date.", "error");
+        return;
+      }
+    }
+
     setPaymentStep('SUMMARY');
   };
 
   const handleProcessPayment = async () => {
     if (!selectedPaymentMethod) {
-      alert("Please select a payment method.");
+      showToast("Please select a payment method.", "warning");
       return;
     }
     
@@ -131,20 +153,21 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
 
     try {
       const res = await patientApi.bookAppointment({
-        doctor_id: selectedDoctorDetails._id,
+        doctor_id: selectedDoctorDetails?._id,
         visitDate: date,
         chiefComplaint: complaints
       });
 
-      if (res.success) {
+      if (res.success && selectedDoctorDetails) {
         setPaymentStep('SUCCESS');
         
-        const newRecordObj = { visitDate: date }; // Temp object to calculate initial status
+        const newRecordObj = { visitDate: date }; 
         
         const newAppointment: BookedAppointment = {
           id: res.data._id,
+          doctorId: selectedDoctorDetails._id,
           doctorName: `Dr. ${selectedDoctorDetails.firstName} ${selectedDoctorDetails.lastName}`,
-          department: department || selectedDoctorDetails?.department || 'General Practice',
+          department: department || selectedDoctorDetails.department || 'General Practice',
           problem: complaints,
           date: date,
           followUpDate: null,
@@ -162,10 +185,10 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
           setSelectedPaymentMethod('');
         }, 2500);
       } else {
-        alert(res.message || "Failed to book appointment.");
+        showToast(res.message || "Failed to book appointment.", "error");
       }
     } catch (error) {
-      alert("Network error processing appointment.");
+      showToast("Network error processing appointment.", "error");
     } finally {
       setIsProcessing(false);
     }
@@ -181,7 +204,20 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
   const followUpAppointments = appointments.filter(a => a.status === 'Follow up required');
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8 relative">
+
+      {/* IN-VIEWPORT TOAST NOTIFICATION */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-top-4 ${
+          toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 
+          toast.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+          'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          {toast.type === 'success' ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
+          <span className="font-semibold">{toast.message}</span>
+        </div>
+      )}
+
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Book Appointment</h2>
         <p className="text-slate-500">Schedule a new consultation with our specialists.</p>
