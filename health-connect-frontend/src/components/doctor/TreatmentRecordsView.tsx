@@ -23,6 +23,10 @@ const TreatmentRecordsView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportTimeframe, setExportTimeframe] = useState('this_month');
+  
+  // Custom Date States for Export
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
   // Base Form State
   const [formData, setFormData] = useState({
@@ -37,7 +41,7 @@ const TreatmentRecordsView: React.FC = () => {
     medNotes: ''
   });
 
-  // NEW: Medication Array State
+  // Medication Array State
   const [medicationsList, setMedicationsList] = useState<MedicationEntry[]>([]);
 
   // Current Medication Input State (before adding to list)
@@ -54,6 +58,7 @@ const TreatmentRecordsView: React.FC = () => {
   const [patientSuggestions, setPatientSuggestions] = useState<any[]>([]);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   
+  const [medicineQuery, setMedicineQuery] = useState('');
   const [medicineSuggestions, setMedicineSuggestions] = useState<string[]>([]);
   const [showMedicineDropdown, setShowMedicineDropdown] = useState(false);
 
@@ -139,7 +144,6 @@ const TreatmentRecordsView: React.FC = () => {
     setCurrentMed(prev => ({ ...prev, [name]: value }));
   };
 
-  // --- Add Medicine to Array ---
   const handleAddMedicine = () => {
     if (!currentMed.name.trim() || !currentMed.frequency.trim() || !currentMed.durationDays.trim()) {
       showToast("Please fill all medicine fields before adding.", "error");
@@ -156,10 +160,9 @@ const TreatmentRecordsView: React.FC = () => {
     };
 
     setMedicationsList([...medicationsList, newMed]);
-    setCurrentMed({ name: '', frequency: '', durationDays: '' }); // Clear inputs
+    setCurrentMed({ name: '', frequency: '', durationDays: '' }); 
   };
 
-  // --- Remove Medicine from Array ---
   const handleRemoveMedicine = (index: number) => {
     const newList = [...medicationsList];
     newList.splice(index, 1);
@@ -172,14 +175,13 @@ const TreatmentRecordsView: React.FC = () => {
       return showToast("Please select a valid patient appointment from the dropdown.", "error");
     }
 
-    // Check if the user forgot to add a filled medication
     if (currentMed.name.trim() && !isEditing) {
        return showToast("You have un-added medicine data. Click 'Add Medicine' first.", "warning");
     }
 
     const payload = {
       ...formData,
-      medications: medicationsList // Send the array instead of single strings
+      medications: medicationsList 
     };
 
     try {
@@ -230,9 +232,181 @@ const TreatmentRecordsView: React.FC = () => {
     });
   };
 
+  // --- Core Export Logic ---
+  const getExportData = () => {
+    const now = new Date();
+    let start: Date;
+    let end: Date = new Date();
+
+    if (exportTimeframe === 'this_month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (exportTimeframe === 'last_month') {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    } else if (exportTimeframe === '3_months') {
+      start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    } else if (exportTimeframe === 'custom') {
+      if (!customStartDate || !customEndDate) {
+        showToast("Please select both start and end dates.", "warning");
+        return null;
+      }
+      start = new Date(customStartDate);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    const filteredExport = records.filter(record => {
+      // Must contain diagnosis and outcomeStatus
+      if (!record.diagnosis || !record.outcomeStatus) return false;
+
+      // Validate Timeframe via updatedAt
+      const updated = new Date(record.updatedAt);
+      return updated >= start && updated <= end;
+    });
+
+    if (filteredExport.length === 0) {
+      showToast("No valid records found in this timeframe.", "warning");
+      return null;
+    }
+
+    return filteredExport;
+  };
+
   const handleExport = (format: 'pdf' | 'excel') => {
-    alert(`Downloading Treatment Records as ${format.toUpperCase()} for timeframe: ${exportTimeframe}`);
-    setIsExportModalOpen(false);
+    const exportData = getExportData();
+    if (!exportData) return;
+
+    if (format === 'excel') {
+      // Native CSV Export for Excel Compatibility
+      const headers = [
+        'Record ID', 'Updated At', 'Visit Date', 'Patient Name', 'Patient ID', 
+        'Chief Complaint', 'Diagnosis', 'Treatment Prescribed', 'Medications', 
+        'Medication Notes', 'Outcome Status', 'Follow Up Date', 'Follow Up Instructions', 'Additional Notes'
+      ];
+      
+      const csvRows = exportData.map(r => {
+        // Format medications array into a single readable string
+        const medsString = r.medications && r.medications.length > 0 
+          ? r.medications.map((m: any) => `${m.name} (${m.frequency}, ${m.duration})`).join(' | ') 
+          : 'None';
+
+        return [
+          r._id,
+          new Date(r.updatedAt).toLocaleDateString(),
+          new Date(r.visitDate).toLocaleDateString(),
+          `${r.patient_id?.firstName} ${r.patient_id?.lastName}`,
+          r.patient_id?._id,
+          `"${(r.chiefComplaint || '').replace(/"/g, '""')}"`,
+          `"${(r.diagnosis || '').replace(/"/g, '""')}"`,
+          `"${(r.treatmentPrescribed || '').replace(/"/g, '""')}"`,
+          `"${medsString.replace(/"/g, '""')}"`,
+          `"${(r.medNotes || '').replace(/"/g, '""')}"`,
+          r.outcomeStatus,
+          r.followUpDate ? new Date(r.followUpDate).toLocaleDateString() : 'N/A',
+          `"${(r.followUpInstruction || '').replace(/"/g, '""')}"`,
+          `"${(r.additionalNotes || '').replace(/"/g, '""')}"`
+        ];
+      });
+
+      const csvContent = [headers.join(','), ...csvRows.map(row => row.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Treatment_Records_${exportTimeframe}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast("Excel (CSV) file downloaded successfully.", "success");
+      setIsExportModalOpen(false);
+
+    } else if (format === 'pdf') {
+      // Native Print Window Export for PDF
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        showToast("Pop-up blocked. Please allow pop-ups to generate PDF.", "error");
+        return;
+      }
+
+      // Title tag sets the default save name for the PDF in the browser print dialog
+      const html = `
+        <html>
+          <head>
+            <title>health-connect treatment-record</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; color: #334155; }
+              h2 { color: #0f172a; margin-bottom: 5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+              h3 { color: #475569; margin-top: 0; margin-bottom: 20px; font-size: 14px; font-weight: normal; }
+              table { width: 100%; border-collapse: collapse; font-size: 11px; }
+              th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; vertical-align: top; }
+              th { background-color: #f8fafc; font-weight: bold; color: #475569; }
+              .text-xs { font-size: 10px; color: #64748b; }
+              .mt { margin-top: 6px; display: block; }
+            </style>
+          </head>
+          <body>
+            <h2>Health Connect</h2>
+            <h3>Treatment Records Extract (${exportTimeframe.replace('_', ' ').toUpperCase()})</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th width="20%">Patient Details & Dates</th>
+                  <th width="25%">Clinical Assessment</th>
+                  <th width="30%">Treatment & Medications</th>
+                  <th width="25%">Outcome & Follow-up</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${exportData.map(r => {
+                  const medsString = r.medications && r.medications.length > 0 
+                    ? r.medications.map((m: any) => `<li>${m.name} (${m.frequency}, ${m.duration})</li>`).join('') 
+                    : '<li>None</li>';
+
+                  return `
+                  <tr>
+                    <td>
+                      <strong>${r.patient_id?.firstName} ${r.patient_id?.lastName}</strong><br/>
+                      <span class="text-xs">${r.patient_id?._id}</span>
+                      <span class="text-xs mt"><strong>Visit:</strong> ${new Date(r.visitDate).toLocaleDateString()}</span>
+                      <span class="text-xs"><strong>Updated:</strong> ${new Date(r.updatedAt).toLocaleString()}</span>
+                    </td>
+                    <td>
+                      <strong>Complaint:</strong> ${r.chiefComplaint}<br/>
+                      <span class="mt"><strong>Diagnosis:</strong> ${r.diagnosis}</span>
+                      <span class="mt"><strong>Addl Notes:</strong> ${r.additionalNotes || 'N/A'}</span>
+                    </td>
+                    <td>
+                      <strong>Plan:</strong> ${r.treatmentPrescribed}
+                      <span class="mt"><strong>Meds:</strong></span>
+                      <ul style="margin: 2px 0 2px 15px; padding: 0;">${medsString}</ul>
+                      <span class="mt"><strong>Med Notes:</strong> ${r.medNotes || 'N/A'}</span>
+                    </td>
+                    <td>
+                      <strong>Status:</strong> ${r.outcomeStatus}<br/>
+                      <span class="mt"><strong>Follow-up:</strong> ${r.followUpDate ? new Date(r.followUpDate).toLocaleDateString() : 'None'}</span>
+                      <span class="mt"><strong>Instructions:</strong> ${r.followUpInstruction || 'N/A'}</span>
+                    </td>
+                  </tr>
+                `}).join('')}
+              </tbody>
+            </table>
+            <script>
+              window.onload = () => {
+                window.print();
+                setTimeout(() => window.close(), 500); 
+              }
+            </script>
+          </body>
+        </html>
+      `;
+      
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+      setIsExportModalOpen(false);
+    }
   };
 
   const filteredRecords = records.filter(record => {
@@ -580,8 +754,18 @@ const TreatmentRecordsView: React.FC = () => {
               
               {exportTimeframe === 'custom' && (
                 <div className="flex gap-2 pt-2 animate-in fade-in">
-                  <input type="date" className="w-1/2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500" />
-                  <input type="date" className="w-1/2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500" />
+                  <input 
+                    type="date" 
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="w-1/2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500" 
+                  />
+                  <input 
+                    type="date" 
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="w-1/2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500" 
+                  />
                 </div>
               )}
             </div>
