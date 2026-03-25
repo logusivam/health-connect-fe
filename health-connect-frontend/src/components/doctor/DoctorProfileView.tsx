@@ -10,7 +10,8 @@ interface DoctorProfileViewProps {
 
 const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarChange, onProfileUpdate }) => {
   const [profile, setProfile] = useState<any>(null);
-  const [departments, setDepartments] = useState<any[]>([]); // NEW: Store DB Departments
+  const [departments, setDepartments] = useState<any[]>([]); // Store DB Departments
+  const [totalTreated, setTotalTreated] = useState<number>(0); // NEW: Real-time patient count
   const [isLoading, setIsLoading] = useState(true);
 
   const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
@@ -24,10 +25,11 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
 
   const fetchData = async () => {
     try {
-      // Fetch both profile and departments concurrently
-      const [profileRes, deptRes] = await Promise.all([
+      // Fetch profile, departments, and treatment records concurrently
+      const [profileRes, deptRes, recordsRes] = await Promise.all([
         doctorApi.getProfile(),
-        metadataApi.getDepartments()
+        metadataApi.getDepartments(),
+        doctorApi.getTreatmentRecords() // Fetch records to calculate unique patients
       ]);
 
       if (profileRes.success) {
@@ -38,6 +40,16 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       
       if (deptRes.success) {
         setDepartments(deptRes.data);
+      }
+
+      if (recordsRes.success) {
+        // STRICT FILTER: Must have diagnosis and outcome status
+        const validRecords = recordsRes.data.filter((r: any) => r.diagnosis && r.outcomeStatus);
+        
+        // UNIQUE PATIENTS ONLY: Map the patient IDs and put them in a Set to remove duplicates
+        const uniquePatientIds = new Set(validRecords.map((r: any) => r.patient_id?._id || r.patient_id));
+        
+        setTotalTreated(uniquePatientIds.size);
       }
     } catch (error) {
       console.error("Failed to fetch data");
@@ -99,7 +111,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       updatePayload = { firstName: editValue, lastName: editValueLast };
       setProfile((prev: any) => ({ ...prev, firstName: editValue, lastName: editValueLast }));
     } else if (editField === 'department') {
-      // NEW: If department changes, automatically reset the specialization
+      // If department changes, automatically reset the specialization
       updatePayload = { department: editValue, specialization: '' };
       setProfile((prev: any) => ({ ...prev, department: editValue, specialization: '' }));
     } else {
@@ -121,7 +133,6 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     setEditField(null);
   };
 
-  // Helper to get available specializations based on currently selected department
   const currentDeptObj = departments.find(d => d.name === profile?.department);
   const availableSpecializations = currentDeptObj ? currentDeptObj.specializations : [];
 
@@ -310,7 +321,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                </div>
                <div className="text-right hidden sm:block">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Total Patients Treated</p>
-                  <p className="font-bold text-slate-800 text-xl">1,245</p>
+                  <p className="font-bold text-slate-800 text-xl">{totalTreated.toLocaleString()}</p>
                </div>
             </div>
           </div>
