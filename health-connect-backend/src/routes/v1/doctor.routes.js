@@ -1,7 +1,7 @@
 import express from 'express';
 import { getDoctorProfile, updateDoctorProfile, getDoctorDirectory, searchPatients,
     getDepartmentMedicines, getFlags, createFlag, updateFlag, getTodayAppointments,
-    getTreatmentRecords, updateTreatmentRecord
+    getTreatmentRecords, updateTreatmentRecord, getPatientsHistory
  } from '../../controllers/v1/doctor.controller.js';
 import { protect } from '../../middlewares/auth.middleware.js';
 
@@ -20,5 +20,8 @@ router.put('/flags/:id', protect, updateFlag);
 router.get('/appointments/today', protect, getTodayAppointments);
 router.get('/treatment-records', protect, getTreatmentRecords);
 router.put('/treatment-records/:id', protect, updateTreatmentRecord);
+
+// NEW: Global Patients History Endpoint
+router.get('/patients-history', protect, getPatientsHistory); 
 
 export default router;

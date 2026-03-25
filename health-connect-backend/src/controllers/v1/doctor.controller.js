@@ -245,3 +245,94 @@ export const updateTreatmentRecord = async (req, res) => {
     res.status(500).json({ success: false, message: 'Error updating record.' });
   }
 };
+
+// NEW: Fetch uniquely grouped patient history for the logged-in doctor
+export const getPatientsHistory = async (req, res) => {
+  try {
+    const doctor = await DoctorProfile.findOne({ user_id: req.user.id });
+    if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found' });
+
+    const myRecords = await TreatmentRecord.find({ doctor_id: doctor._id, is_deleted: false }).select('patient_id');
+    const patientIds = [...new Set(myRecords.map(r => r.patient_id.toString()))];
+
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const allRecords = await TreatmentRecord.find({
+      patient_id: { $in: patientIds },
+      visitDate: { $lte: endOfToday }, // Till current day's date
+      is_deleted: false
+    })
+    .populate('patient_id', 'firstName lastName avatar _id')
+    .populate('doctor_id', 'firstName lastName avatar _id specialization department')
+    .sort({ visitDate: -1 }); 
+
+    const patientsMap = {};
+
+    allRecords.forEach(record => {
+      if (!record.patient_id || !record.doctor_id) return; 
+
+      const pId = record.patient_id._id.toString();
+      
+      if (!patientsMap[pId]) {
+        patientsMap[pId] = {
+          id: pId,
+          patientId: pId,
+          patientName: `${record.patient_id.firstName} ${record.patient_id.lastName}`,
+          avatar: record.patient_id.avatar || null,
+          doctors: new Map(),
+          departments: new Set(),
+          latestMyRecord: null
+        };
+      }
+
+      const dId = record.doctor_id._id.toString();
+      if (!patientsMap[pId].doctors.has(dId)) {
+        patientsMap[pId].doctors.set(dId, {
+          id: dId,
+          name: `Dr. ${record.doctor_id.firstName} ${record.doctor_id.lastName}`,
+          avatar: record.doctor_id.avatar || null,
+          department: record.doctor_id.department || 'General'
+        });
+      }
+
+      if (record.doctor_id.department) {
+        patientsMap[pId].departments.add(record.doctor_id.department);
+      }
+
+      // Check against logged-in doctor
+      if (dId === doctor._id.toString()) {
+        // If we haven't tracked a record for this doctor yet, store it
+        if (!patientsMap[pId].latestMyRecord) {
+          patientsMap[pId].latestMyRecord = {
+            diagnosis: record.diagnosis || '', 
+            status: record.outcomeStatus || '',
+            lastDateVisited: new Date(record.visitDate).toLocaleDateString()
+          };
+        } 
+        // If we tracked an empty/pending record, backfill the diagnosis from the next newest completed record!
+        else if (!patientsMap[pId].latestMyRecord.diagnosis && record.diagnosis) {
+          patientsMap[pId].latestMyRecord.diagnosis = record.diagnosis;
+          patientsMap[pId].latestMyRecord.status = record.outcomeStatus || patientsMap[pId].latestMyRecord.status;
+        }
+      }
+    });
+
+    const result = Object.values(patientsMap).map(p => ({
+      id: p.id,
+      patientId: p.patientId,
+      patientName: p.patientName,
+      avatar: p.avatar,
+      department: Array.from(p.departments),
+      doctors: Array.from(p.doctors.values()),
+      diagnosis: p.latestMyRecord?.diagnosis || 'Pending Diagnosis', // Fallback only if absolutely no diagnosis exists
+      status: p.latestMyRecord?.status || 'Ongoing',
+      lastDateVisited: p.latestMyRecord?.lastDateVisited || 'N/A'
+    }));
+
+    res.status(200).json({ success: true, data: result, doctorId: doctor._id.toString() });
+  } catch (error) {
+    console.error('Error fetching patients history:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

@@ -48,7 +48,8 @@ export const doctorApi = {
   getTodayAppointments: () => fetchWithCookies('/doctors/appointments/today', { method: 'GET' }),
   getTreatmentRecords: () => fetchWithCookies('/doctors/treatment-records', { method: 'GET' }),
   updateTreatmentRecord: (id: string, data: any) => fetchWithCookies(`/doctors/treatment-records/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  };
+  getPatientsHistory: () => fetchWithCookies('/doctors/patients-history', { method: 'GET' }),
+};
 
 // ADDED: New API group for metadata
 export const metadataApi = {
