@@ -24,7 +24,7 @@ export const getDoctorProfile = async (req, res) => {
 
 export const updateDoctorProfile = async (req, res) => {
   try {
-    const { firstName, lastName, specialization, department, contactEmail, contactPhone, address, avatarBase64 } = req.body;
+    const { firstName, lastName, specialization, department, contactEmail, contactPhone, address, avatarBase64, education } = req.body;
     
     const updateData = {};
     if (firstName) updateData.firstName = firstName;
@@ -35,6 +35,7 @@ export const updateDoctorProfile = async (req, res) => {
     if (contactPhone !== undefined) updateData.contactPhone = contactPhone;
     if (address !== undefined) updateData.address = address;
     if (avatarBase64) updateData.avatar = avatarBase64;
+    if (education !== undefined) updateData.education = education;
 
     const profile = await DoctorProfile.findOneAndUpdate(
       { user_id: req.user.id },

@@ -9,6 +9,7 @@ const doctorProfileSchema = new mongoose.Schema({
   specialization: { type: String, default: '' }, // Empty initially
   registrationNumber: { type: String }, // Mapped from phone initially
   department: { type: String, default: '' }, // Empty initially
+  education: { type: String, default: '' }, // Empty initially
   contactEmail: { type: String }, // Mapped from registered email
   contactPhone: { type: String }, // Mapped from phone
   address: { type: String, default: '' },

@@ -14,7 +14,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
   const [totalTreated, setTotalTreated] = useState<number>(0); // NEW: Real-time patient count
   const [isLoading, setIsLoading] = useState(true);
 
-  const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
+  const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'education' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editValueLast, setEditValueLast] = useState('');
   const [avatarError, setAvatarError] = useState<string>(''); 
@@ -291,8 +291,27 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
               )}
             </div>
 
+            {/* Education */}
+            <div className="group">
+              <div className="flex items-center gap-2 mb-1">
+                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">Education & Qualifications</p>
+                 {editField !== 'education' && (
+                   <button onClick={() => startEdit('education')} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-700"><Edit2 className="w-3.5 h-3.5" /></button>
+                 )}
+              </div>
+              {editField === 'education' ? (
+                <div className="flex gap-2">
+                  <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. MBBS, MD" />
+                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <p className="font-medium text-slate-900 text-lg">{profile.education || 'Not specified'}</p>
+              )}
+            </div>
+
             {/* Address */}
-            <div className="md:col-span-2 group">
+            <div className="group">
               <div className="flex items-center gap-2 mb-1">
                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-indigo-500 transition-colors">Office / Clinic Address</p>
                  {editField !== 'address' && (
