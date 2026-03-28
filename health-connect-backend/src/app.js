@@ -9,7 +9,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173', 
   'https://health-connect-fe-delta.vercel.app',
-  'https://www.yourdomain.com' // Good practice to include the www variant
+  'https://health-connect-theta-two.vercel.app' // Good practice to include the www variant
 ];
 
 // 2. Configure CORS options securely
