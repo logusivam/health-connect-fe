@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, ChevronLeft, ChevronRight, AlertCircle, X } from 'lucide-react';
 import favIcon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/patient.types';
 import { authApi, patientApi } from '../../services/api';
@@ -27,21 +27,59 @@ export default function PatientDashboard() {
   const [userName, setUserName] = useState<string>('');
   const [patientId, setPatientId] = useState<string>('');
 
-  // Fetch basic profile data on mount to populate the Topbar
+  // --- NEW: Global Persistent Toast State for Follow-ups ---
+  const [missingFollowUpToast, setMissingFollowUpToast] = useState(false);
+
   useEffect(() => {
-    const initProfile = async () => {
+    const initProfileAndCheckFollowUps = async () => {
       try {
-        const res = await patientApi.getProfile();
-        if (res.success) {
-          setUserName(`${res.data.firstName} ${res.data.lastName}`);
-          setPatientId(res.data._id);
-          if (res.data.avatar) setUserAvatar(res.data.avatar);
+        const [profileRes, apptsRes] = await Promise.all([
+          patientApi.getProfile(),
+          patientApi.getAppointments()
+        ]);
+        
+        if (profileRes.success) {
+          setUserName(`${profileRes.data.firstName} ${profileRes.data.lastName}`);
+          setPatientId(profileRes.data._id);
+          if (profileRes.data.avatar) setUserAvatar(profileRes.data.avatar);
+        }
+
+        // --- Follow-up Toast Logic ---
+        if (apptsRes.success) {
+          const records = apptsRes.data;
+          
+          // Find records that REQUIRE a follow-up
+          const needsFollowUp = records.filter((r: any) => r.outcomeStatus === 'Follow up required' && r.followUpDate);
+          
+          let hasMissing = false;
+          
+          for (const req of needsFollowUp) {
+            const fDateStr = new Date(req.followUpDate).toISOString().split('T')[0];
+            const originalVisitTime = new Date(req.visitDate).getTime();
+            const fDateTime = new Date(req.followUpDate).getTime();
+            
+            // Check if there is ANY appointment booked ON OR BEFORE the followUpDate (but after the original visit)
+            const isBooked = records.some((r: any) => {
+              const vTime = new Date(r.visitDate).getTime();
+              return vTime > originalVisitTime && vTime <= fDateTime;
+            });
+            
+            if (!isBooked) {
+              hasMissing = true;
+              break;
+            }
+          }
+
+          if (hasMissing) {
+            setMissingFollowUpToast(true);
+            setTimeout(() => setMissingFollowUpToast(false), 15000); // Hide after 15 seconds
+          }
         }
       } catch (err) {
         console.error('Failed to load initial profile data', err);
       }
     };
-    initProfile();
+    initProfileAndCheckFollowUps();
   }, []);
 
   const navItems = [
@@ -64,8 +102,22 @@ export default function PatientDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans">
+    <div className="min-h-screen bg-slate-50 flex font-sans relative">
       
+      {/* --- IN-VIEWPORT GLOBAL TOAST NOTIFICATION --- */}
+      {missingFollowUpToast && (
+        <div className="fixed top-20 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl border flex items-start gap-4 animate-in slide-in-from-top-4 fade-in duration-500 bg-orange-50 border-orange-200 text-orange-800 max-w-md">
+          <AlertCircle className="w-6 h-6 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="font-bold text-base block mb-0.5">Follow-up Action Required!</span>
+            <span className="text-sm font-medium block">You have pending follow-up instructions from a recent visit. Please book your appointment before the specified date.</span>
+          </div>
+          <button onClick={() => setMissingFollowUpToast(false)} className="text-orange-400 hover:text-orange-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       {/* Sidebar - Desktop */}
       <aside 
         className={`hidden lg:flex flex-col bg-slate-900 text-white min-h-screen sticky top-0 transition-all duration-300 ease-in-out relative ${
@@ -120,9 +172,9 @@ export default function PatientDashboard() {
         <div className="p-4 border-t border-slate-800">
           <button 
             onClick={async () => { 
-    await authApi.logout(); // Tells backend to destroy cookies
-    window.location.href = '/login'; // Hard redirect to clear React state
-  }}
+              await authApi.logout(); 
+              window.location.href = '/login'; 
+            }}
             className={`w-full flex items-center group relative px-3 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors font-medium ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}
           >
             <LogOut className={`w-5 h-5 shrink-0 transition-all duration-300 ${isSidebarOpen ? 'mr-3' : 'mr-0'}`} />

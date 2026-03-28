@@ -10,10 +10,11 @@ interface DoctorProfileViewProps {
 
 const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarChange, onProfileUpdate }) => {
   const [profile, setProfile] = useState<any>(null);
-  const [departments, setDepartments] = useState<any[]>([]); // NEW: Store DB Departments
+  const [departments, setDepartments] = useState<any[]>([]); // Store DB Departments
+  const [totalTreated, setTotalTreated] = useState<number>(0); // NEW: Real-time patient count
   const [isLoading, setIsLoading] = useState(true);
 
-  const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
+  const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'education' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editValueLast, setEditValueLast] = useState('');
   const [avatarError, setAvatarError] = useState<string>(''); 
@@ -24,10 +25,11 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
 
   const fetchData = async () => {
     try {
-      // Fetch both profile and departments concurrently
-      const [profileRes, deptRes] = await Promise.all([
+      // Fetch profile, departments, and treatment records concurrently
+      const [profileRes, deptRes, recordsRes] = await Promise.all([
         doctorApi.getProfile(),
-        metadataApi.getDepartments()
+        metadataApi.getDepartments(),
+        doctorApi.getTreatmentRecords() // Fetch records to calculate unique patients
       ]);
 
       if (profileRes.success) {
@@ -38,6 +40,16 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       
       if (deptRes.success) {
         setDepartments(deptRes.data);
+      }
+
+      if (recordsRes.success) {
+        // STRICT FILTER: Must have diagnosis and outcome status
+        const validRecords = recordsRes.data.filter((r: any) => r.diagnosis && r.outcomeStatus);
+        
+        // UNIQUE PATIENTS ONLY: Map the patient IDs and put them in a Set to remove duplicates
+        const uniquePatientIds = new Set(validRecords.map((r: any) => r.patient_id?._id || r.patient_id));
+        
+        setTotalTreated(uniquePatientIds.size);
       }
     } catch (error) {
       console.error("Failed to fetch data");
@@ -99,7 +111,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       updatePayload = { firstName: editValue, lastName: editValueLast };
       setProfile((prev: any) => ({ ...prev, firstName: editValue, lastName: editValueLast }));
     } else if (editField === 'department') {
-      // NEW: If department changes, automatically reset the specialization
+      // If department changes, automatically reset the specialization
       updatePayload = { department: editValue, specialization: '' };
       setProfile((prev: any) => ({ ...prev, department: editValue, specialization: '' }));
     } else {
@@ -121,7 +133,6 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     setEditField(null);
   };
 
-  // Helper to get available specializations based on currently selected department
   const currentDeptObj = departments.find(d => d.name === profile?.department);
   const availableSpecializations = currentDeptObj ? currentDeptObj.specializations : [];
 
@@ -280,8 +291,27 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
               )}
             </div>
 
+            {/* Education */}
+            <div className="group">
+              <div className="flex items-center gap-2 mb-1">
+                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">Education & Qualifications</p>
+                 {editField !== 'education' && (
+                   <button onClick={() => startEdit('education')} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-700"><Edit2 className="w-3.5 h-3.5" /></button>
+                 )}
+              </div>
+              {editField === 'education' ? (
+                <div className="flex gap-2">
+                  <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. MBBS, MD" />
+                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <p className="font-medium text-slate-900 text-lg">{profile.education || 'Not specified'}</p>
+              )}
+            </div>
+
             {/* Address */}
-            <div className="md:col-span-2 group">
+            <div className="group">
               <div className="flex items-center gap-2 mb-1">
                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-indigo-500 transition-colors">Office / Clinic Address</p>
                  {editField !== 'address' && (
@@ -310,7 +340,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                </div>
                <div className="text-right hidden sm:block">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Total Patients Treated</p>
-                  <p className="font-bold text-slate-800 text-xl">1,245</p>
+                  <p className="font-bold text-slate-800 text-xl">{totalTreated.toLocaleString()}</p>
                </div>
             </div>
           </div>

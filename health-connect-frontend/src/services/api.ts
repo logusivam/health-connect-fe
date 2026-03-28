@@ -28,14 +28,27 @@ export const patientApi = {
   getProfile: () => fetchWithCookies('/patients/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/patients/profile', { method: 'PUT', body: JSON.stringify(data) }),
   bookAppointment: (data: any) => fetchWithCookies('/patients/appointments', { method: 'POST', body: JSON.stringify(data) }),
-  getAppointments: () => fetchWithCookies('/patients/get-appointments', { method: 'GET' }) 
+  getAppointments: () => fetchWithCookies('/patients/get-appointments', { method: 'GET' }), 
+  getFlags: () => fetchWithCookies('/patients/flags', { method: 'GET' }),
+  getHistory: () => fetchWithCookies('/patients/history', { method: 'GET' })
+
 };
 
 export const doctorApi = {
   getProfile: () => fetchWithCookies('/doctors/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/doctors/profile', { method: 'PUT', body: JSON.stringify(data) }),
   // ADDED: Fetch all doctors for the booking page
-    getDirectory: () => fetchWithCookies('/doctors/directory', { method: 'GET' }),
+  getDirectory: () => fetchWithCookies('/doctors/directory', { method: 'GET' }),
+  // ... unsuitable medicine flagging routes ...
+  searchPatients: (q: string) => fetchWithCookies(`/doctors/patients/search?q=${q}`, { method: 'GET' }),
+  getDepartmentMedicines: () => fetchWithCookies('/doctors/medicines', { method: 'GET' }),
+  getFlags: () => fetchWithCookies('/doctors/flags', { method: 'GET' }),
+  createFlag: (data: any) => fetchWithCookies('/doctors/flags', { method: 'POST', body: JSON.stringify(data) }),
+  updateFlag: (id: string, data: any) => fetchWithCookies(`/doctors/flags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getTodayAppointments: () => fetchWithCookies('/doctors/appointments/today', { method: 'GET' }),
+  getTreatmentRecords: () => fetchWithCookies('/doctors/treatment-records', { method: 'GET' }),
+  updateTreatmentRecord: (id: string, data: any) => fetchWithCookies(`/doctors/treatment-records/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getPatientsHistory: () => fetchWithCookies('/doctors/patients-history', { method: 'GET' }),
 };
 
 // ADDED: New API group for metadata

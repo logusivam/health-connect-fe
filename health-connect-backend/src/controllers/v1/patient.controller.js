@@ -1,6 +1,7 @@
 import PatientProfile from '../../models/PatientProfile.js';
 import TreatmentRecord from '../../models/TreatmentRecord.js';
 import User from '../../models/User.js'; 
+import UnsuitableMedicine from '../../models/UnsuitableMedicine.js';
 
 // GET /api/v1/patients/profile
 export const getPatientProfile = async (req, res) => {
@@ -112,5 +113,55 @@ export const getPatientAppointments = async (req, res) => {
   } catch (error) {
     console.error('Error fetching appointments:', error);
     res.status(500).json({ success: false, message: 'Server Error fetching appointments.' });
+  }
+};
+
+// NEW: Fetch all active unsuitable medicine flags for the logged-in patient
+export const getPatientFlags = async (req, res) => {
+  try {
+    const patientProfile = await PatientProfile.findOne({ user_id: req.user.id });
+    
+    if (!patientProfile) {
+      return res.status(404).json({ success: false, message: 'Patient profile not found.' });
+    }
+
+    // Fetch records where is_active is true (Unsuitable) and populate the doctor's details
+    const flags = await UnsuitableMedicine.find({ 
+      patient_id: patientProfile._id, 
+      is_active: true // Ensure we only get active 'Unsuit' flags
+    })
+    .populate('flagged_by_doctor_id', 'firstName lastName specialization') // Get doctor name & specialization
+    .sort({ flagged_at: -1 });
+
+    res.status(200).json({ success: true, data: flags });
+  } catch (error) {
+    console.error('Error fetching patient flags:', error);
+    res.status(500).json({ success: false, message: 'Server Error fetching flags.' });
+  }
+};
+
+// NEW: Fetch completed treatment records (Medical History) for the logged-in patient
+export const getPatientHistory = async (req, res) => {
+  try {
+    const patientProfile = await PatientProfile.findOne({ user_id: req.user.id });
+    
+    if (!patientProfile) {
+      return res.status(404).json({ success: false, message: 'Patient profile not found.' });
+    }
+
+    // STRICT FILTER: Only records with a diagnosis & outcome status (completed by doctor)
+    const records = await TreatmentRecord.find({ 
+      patient_id: patientProfile._id,
+      diagnosis: { $exists: true, $ne: "" },
+      outcomeStatus: { $exists: true, $ne: "" },
+      is_deleted: false 
+    })
+    .populate('doctor_id', 'firstName lastName specialization department _id') // Get doctor details
+    .sort({ visitDate: -1 }); // Sort newest first
+
+    res.status(200).json({ success: true, data: records });
+  } catch (error) {
+    console.error('Error fetching patient history:', error);
+    res.status(500).json({ success: false, message: 'Server Error fetching history.' });
   }
 };
