@@ -259,6 +259,7 @@ export const getPatientsHistory = async (req, res) => {
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
+    // Fetch all treatment records for these patients up to today
     const allRecords = await TreatmentRecord.find({
       patient_id: { $in: patientIds },
       visitDate: { $lte: endOfToday }, // Till current day's date
@@ -267,6 +268,12 @@ export const getPatientsHistory = async (req, res) => {
     .populate('patient_id', 'firstName lastName avatar _id')
     .populate('doctor_id', 'firstName lastName avatar _id specialization department')
     .sort({ visitDate: -1 }); 
+
+    // Fetch all ACTIVE unsuitable medicines for these patients
+    const activeFlags = await UnsuitableMedicine.find({
+      patient_id: { $in: patientIds },
+      is_active: true // Active means Unsuitable
+    }).populate('flagged_by_doctor_id', 'firstName lastName avatar specialization');
 
     const patientsMap = {};
 
@@ -283,7 +290,8 @@ export const getPatientsHistory = async (req, res) => {
           avatar: record.patient_id.avatar || null,
           doctors: new Map(),
           departments: new Set(),
-          latestMyRecord: null
+          latestMyRecord: null,
+          unsuitableMedicines: [] // Initialize empty array for flags
         };
       }
 
@@ -293,7 +301,8 @@ export const getPatientsHistory = async (req, res) => {
           id: dId,
           name: `Dr. ${record.doctor_id.firstName} ${record.doctor_id.lastName}`,
           avatar: record.doctor_id.avatar || null,
-          department: record.doctor_id.department || 'General'
+          department: record.doctor_id.department || 'General',
+          specialization: record.doctor_id.specialization || ''
         });
       }
 
@@ -319,6 +328,24 @@ export const getPatientsHistory = async (req, res) => {
       }
     });
 
+    // Map the active flags to the correct patient in the map
+    activeFlags.forEach(flag => {
+      const pId = flag.patient_id.toString();
+      if (patientsMap[pId]) {
+        patientsMap[pId].unsuitableMedicines.push({
+          medicineName: flag.medicine_name,
+          reason: flag.reason,
+          severity: flag.severity,
+          date: flag.flagged_at,
+          doctor: {
+            name: `Dr. ${flag.flagged_by_doctor_id.firstName} ${flag.flagged_by_doctor_id.lastName}`,
+            avatar: flag.flagged_by_doctor_id.avatar || null,
+            specialization: flag.flagged_by_doctor_id.specialization || 'General Practice'
+          }
+        });
+      }
+    });
+
     const result = Object.values(patientsMap).map(p => ({
       id: p.id,
       patientId: p.patientId,
@@ -326,9 +353,10 @@ export const getPatientsHistory = async (req, res) => {
       avatar: p.avatar,
       department: Array.from(p.departments),
       doctors: Array.from(p.doctors.values()),
-      diagnosis: p.latestMyRecord?.diagnosis || 'Pending Diagnosis', // Fallback only if absolutely no diagnosis exists
+      diagnosis: p.latestMyRecord?.diagnosis || 'Pending Diagnosis', 
       status: p.latestMyRecord?.status || 'Ongoing',
-      lastDateVisited: p.latestMyRecord?.lastDateVisited || 'N/A'
+      lastDateVisited: p.latestMyRecord?.lastDateVisited || 'N/A',
+      unsuitableMedicines: p.unsuitableMedicines // Pass it to frontend
     }));
 
     res.status(200).json({ success: true, data: result, doctorId: doctor._id.toString() });
