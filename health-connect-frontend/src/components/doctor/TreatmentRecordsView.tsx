@@ -3,11 +3,9 @@ import { Edit, Save, Search, Download, X, FileText, AlertTriangle, CheckCircle2,
 import { doctorApi } from '../../services/api';
 
 interface TreatmentRecordsViewProps {
-  highlightedRecordId?: string | null; // NEW: Optional prop to highlight a specific record
+  highlightedRecordId?: string | null; 
 }
 
-
-// Interface for the local medication state
 interface MedicationEntry {
   name: string;
   frequency: string;
@@ -49,7 +47,7 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
   // Medication Array State
   const [medicationsList, setMedicationsList] = useState<MedicationEntry[]>([]);
 
-  // Current Medication Input State (before adding to list)
+  // Current Medication Input State
   const [currentMed, setCurrentMed] = useState({
     name: '',
     frequency: '',
@@ -91,13 +89,34 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
     }
   };
 
+  // UPDATED: Detect highlighted record from Dashboard and open it in 'Complete' mode
   useEffect(() => {
     if (highlightedRecordId && todayAppointments.length > 0) {
-      // Find the record in the pending list
       const pendingRecord = todayAppointments.find(r => r._id === highlightedRecordId);
       
       if (pendingRecord) {
-        handleEditClick(pendingRecord);
+        // Prepare it as a fresh 'Complete Record' (NOT Edit Mode)
+        setIsEditing(null); 
+        setSelectedRecordId(pendingRecord._id);
+        setPatientQuery(`${pendingRecord.patient_id.firstName} ${pendingRecord.patient_id.lastName} (${pendingRecord.patient_id._id})`);
+        
+        setFormData(prev => ({
+          ...prev,
+          date: new Date(pendingRecord.visitDate).toISOString().split('T')[0],
+          complaint: pendingRecord.chiefComplaint || '',
+          diagnosis: '',
+          treatmentPrescribed: '',
+          followUpDate: '',
+          followUpInstruction: '',
+          outcomeStatus: '',
+          additionalNotes: '',
+          medNotes: ''
+        }));
+        
+        setMedicationsList([]);
+        setCurrentMed({ name: '', frequency: '', durationDays: '' });
+        
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }
   }, [highlightedRecordId, todayAppointments]);
@@ -150,7 +169,6 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
     setShowMedicineDropdown(false);
   };
 
-  // UPDATED: Dynamically reset outcomeStatus if a followUpDate is chosen and conflicts
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => {
