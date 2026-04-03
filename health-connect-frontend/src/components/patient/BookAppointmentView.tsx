@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, Smartphone, CreditCard, Building, X, CheckCircle2, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Calendar, Smartphone, CreditCard, Building, X, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { metadataApi, doctorApi, patientApi } from '../../services/api'; 
 
 type PaymentStep = 'HIDDEN' | 'SUMMARY' | 'OPTIONS' | 'SUCCESS';
@@ -12,7 +12,8 @@ interface BookedAppointment {
   problem: string;
   date: string;
   followUpDate?: string | null;
-  status: 'Upcoming' | 'Ongoing' | 'Completed' | 'Referred' | 'Follow up required';
+  isFollowUpParent: boolean;
+  status: 'Upcoming' | 'Ongoing' | 'Completed' | 'Referred' | 'Follow up required' | 'Appointment Booked' | 'Follow up completed' | 'Not visited';
 }
 
 interface BookAppointmentViewProps {
@@ -20,11 +21,16 @@ interface BookAppointmentViewProps {
 }
 
 const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRecordId }) => {
+  // Form States
   const [department, setDepartment] = useState('');
   const [date, setDate] = useState('');
   const [complaints, setComplaints] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
   
+  // Follow-up specific states
+  const [isFollowUpBooking, setIsFollowUpBooking] = useState(false);
+  const [followUpSourceId, setFollowUpSourceId] = useState<string | null>(null);
+
   const [appointments, setAppointments] = useState<BookedAppointment[]>([]);
   
   // Real Data States
@@ -48,60 +54,85 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     setTimeout(() => setToast(null), 4000);
   };
 
-  // --- Dynamic Real-time Status Calculator ---
-  const calculateStatus = (record: any): BookedAppointment['status'] => {
+  // --- Dynamic Real-time Linked Status Calculator ---
+  const calculateStatus = (record: any, allRecords: any[]): BookedAppointment['status'] => {
+    // 1. Is this a parent Follow-up record?
+    if (record.outcomeStatus === 'Follow up required') {
+      const childRecord = allRecords.find(r => r.followUp_for_record_id === record._id);
+      
+      if (childRecord) {
+        // Did the child get seen by the doctor yet?
+        if (childRecord.diagnosis && childRecord.outcomeStatus) return 'Follow up completed';
+        
+        // Still pending
+        const childDate = new Date(childRecord.visitDate).setHours(0,0,0,0);
+        const today = new Date().setHours(0,0,0,0);
+        if (childDate >= today) return 'Appointment Booked';
+        return 'Not visited';
+      } else {
+        // No appointment booked yet
+        if (!record.followUpDate) return 'Follow up required';
+        const fDate = new Date(record.followUpDate).setHours(0,0,0,0);
+        const today = new Date().setHours(0,0,0,0);
+        if (fDate < today) return 'Not visited';
+        return 'Follow up required';
+      }
+    }
+
+    // 2. Standard Outcomes
     if (record.outcomeStatus === 'Resolved') return 'Completed';
-    if (record.outcomeStatus === 'Referred' && record.followUpDate) return 'Referred';
-    if (record.outcomeStatus === 'Follow up required' && record.followUpDate) return 'Follow up required';
+    if (record.outcomeStatus === 'Referred') return 'Referred';
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); 
+    // 3. Fallback Date-based logic for pending/new appointments
+    const today = new Date().setHours(0, 0, 0, 0); 
+    const apptDate = new Date(record.visitDate).setHours(0, 0, 0, 0);
+
+    if (apptDate > today) return 'Upcoming';
+    if (apptDate === today) return 'Ongoing';
     
-    const apptDate = new Date(record.visitDate);
-    apptDate.setHours(0, 0, 0, 0);
-
-    const timeDiff = apptDate.getTime() - today.getTime();
-
-    if (timeDiff > 0) return 'Upcoming';
-    if (timeDiff === 0) return 'Ongoing';
-    return 'Completed'; 
+    // Past record without outcome? Marked as not visited
+    if (record.diagnosis && record.outcomeStatus) return 'Completed';
+    return 'Not visited';
   };
 
-  useEffect(() => {
-    const fetchBookingData = async () => {
-      try {
-        const [deptRes, docsRes, patientRes, apptsRes] = await Promise.all([
-          metadataApi.getDepartments(),
-          doctorApi.getDirectory(),
-          patientApi.getProfile(),
-          patientApi.getAppointments() 
-        ]);
-        
-        if (deptRes.success) setDepartmentsList(deptRes.data);
-        if (docsRes.success) setDoctorsList(docsRes.data);
-        if (patientRes.success) setPatientName(`${patientRes.data.firstName} ${patientRes.data.lastName}`);
-        
-        if (apptsRes.success) {
-          const formattedAppts = apptsRes.data.map((record: any) => ({
-            id: record._id,
-            doctorId: record.doctor_id._id || record.doctor_id, 
-            doctorName: `Dr. ${record.doctor_id.firstName} ${record.doctor_id.lastName}`,
-            department: record.doctor_id.department || 'General',
-            problem: record.chiefComplaint,
-            date: new Date(record.visitDate).toISOString().split('T')[0],
-            followUpDate: record.followUpDate,
-            status: calculateStatus(record)
-          }));
-          setAppointments(formattedAppts);
-        }
-      } catch (error) {
-        showToast("Failed to load booking data.", "error");
-      } finally {
-        setIsLoading(false);
+  const fetchBookingData = useCallback(async () => {
+    try {
+      const [deptRes, docsRes, patientRes, apptsRes] = await Promise.all([
+        metadataApi.getDepartments(),
+        doctorApi.getDirectory(),
+        patientApi.getProfile(),
+        patientApi.getAppointments() 
+      ]);
+      
+      if (deptRes.success) setDepartmentsList(deptRes.data);
+      if (docsRes.success) setDoctorsList(docsRes.data);
+      if (patientRes.success) setPatientName(`${patientRes.data.firstName} ${patientRes.data.lastName}`);
+      
+      if (apptsRes.success) {
+        const rawData = apptsRes.data;
+        const formattedAppts = rawData.map((record: any) => ({
+          id: record._id,
+          doctorId: record.doctor_id._id || record.doctor_id, 
+          doctorName: `Dr. ${record.doctor_id.firstName} ${record.doctor_id.lastName}`,
+          department: record.doctor_id.department || 'General',
+          problem: record.chiefComplaint,
+          date: new Date(record.visitDate).toISOString().split('T')[0],
+          followUpDate: record.followUpDate,
+          isFollowUpParent: record.outcomeStatus === 'Follow up required',
+          status: calculateStatus(record, rawData)
+        }));
+        setAppointments(formattedAppts);
       }
-    };
-    fetchBookingData();
+    } catch (error) {
+      showToast("Failed to load booking data.", "error");
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchBookingData();
+  }, [fetchBookingData]);
 
   useEffect(() => {
     if (highlightedRecordId) {
@@ -121,6 +152,33 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
 
   const selectedDoctorDetails = doctorsList.find(d => d._id === selectedDoctor);
 
+  // --- Start Follow-up Booking Logic ---
+  const handleBookFollowUp = (appt: BookedAppointment) => {
+    setIsFollowUpBooking(true);
+    setFollowUpSourceId(appt.id);
+    
+    // Lock in the fields required
+    setDepartment(appt.department);
+    if (appt.followUpDate) {
+      setDate(new Date(appt.followUpDate).toISOString().split('T')[0]);
+    }
+    setComplaints(`${appt.problem} - Follow up required`);
+    setSelectedDoctor(appt.doctorId);
+    
+    // Scroll to the top to see the form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const clearFollowUpBooking = () => {
+    setIsFollowUpBooking(false);
+    setFollowUpSourceId(null);
+    setDepartment('');
+    setDate('');
+    setComplaints('');
+    setSelectedDoctor(null);
+  };
+  // ------------------------------------
+
   const handleConfirmAppointmentClick = () => {
     if (!complaints.trim()) {
       showToast("Please provide your chief complaints.", "warning");
@@ -134,7 +192,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
         (appt.status === 'Upcoming' || appt.status === 'Ongoing') 
       );
 
-      if (isDuplicate) {
+      if (isDuplicate && !isFollowUpBooking) {
         showToast("You already have a pending appointment with this doctor on the selected date.", "error");
         return;
       }
@@ -155,35 +213,22 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
       const res = await patientApi.bookAppointment({
         doctor_id: selectedDoctorDetails?._id,
         visitDate: date,
-        chiefComplaint: complaints
+        chiefComplaint: complaints,
+        followUp_for_record_id: followUpSourceId // Sends ID if it exists
       });
 
       if (res.success && selectedDoctorDetails) {
         setPaymentStep('SUCCESS');
         
-        const newRecordObj = { visitDate: date }; 
-        
-        const newAppointment: BookedAppointment = {
-          id: res.data._id,
-          doctorId: selectedDoctorDetails._id,
-          doctorName: `Dr. ${selectedDoctorDetails.firstName} ${selectedDoctorDetails.lastName}`,
-          department: department || selectedDoctorDetails.department || 'General Practice',
-          problem: complaints,
-          date: date,
-          followUpDate: null,
-          status: calculateStatus(newRecordObj)
-        };
-        
-        setAppointments([newAppointment, ...appointments]);
-
-        setTimeout(() => {
+        setTimeout(async () => {
           setPaymentStep('HIDDEN');
-          setDepartment('');
-          setDate('');
-          setComplaints('');
-          setSelectedDoctor(null);
+          clearFollowUpBooking();
+          
+          // Re-fetch data to automatically recalculate linked statuses accurately
+          await fetchBookingData();
           setSelectedPaymentMethod('');
-        }, 2500);
+        }, 2000);
+
       } else {
         showToast(res.message || "Failed to book appointment.", "error");
       }
@@ -198,10 +243,13 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     return <div className="text-center py-20 text-slate-500">Loading booking data...</div>;
   }
 
-  // Categorize Appointments
-  const activeAppointments = appointments.filter(a => a.status === 'Upcoming' || a.status === 'Ongoing');
-  const completedAppointments = appointments.filter(a => a.status === 'Completed' || a.status === 'Referred');
-  const followUpAppointments = appointments.filter(a => a.status === 'Follow up required');
+  // Categorize Appointments strictly
+  const activeAppointments = appointments.filter(a => !a.isFollowUpParent && (a.status === 'Upcoming' || a.status === 'Ongoing'));
+  const completedAppointments = appointments.filter(a => !a.isFollowUpParent && (a.status === 'Completed' || a.status === 'Referred' || a.status === 'Not visited'));
+  const followUpAppointments = appointments.filter(a => a.isFollowUpParent);
+
+  // Dynamic Completed Columns
+  const showFollowUpCol = completedAppointments.some(a => a.followUpDate);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 relative">
@@ -224,13 +272,27 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8 relative transition-all hover:shadow-md">
+        
+        {isFollowUpBooking && (
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              <span className="font-bold">Booking a Follow-up Appointment</span>
+            </div>
+            <button onClick={clearFollowUpBooking} className="text-orange-600 hover:text-orange-900 bg-orange-100 hover:bg-orange-200 p-1.5 rounded-lg transition-colors flex items-center gap-1 text-sm font-semibold">
+              <X className="w-4 h-4"/> Cancel Follow-up
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700 block">Select Department</label>
             <select 
               value={department}
               onChange={(e) => { setDepartment(e.target.value); setSelectedDoctor(null); }}
-              className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-slate-50 focus:bg-white appearance-none cursor-pointer"
+              disabled={isFollowUpBooking}
+              className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-slate-50 focus:bg-white appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option value="">All Departments</option>
               {departmentsList.map(dept => (
@@ -245,8 +307,9 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
               type="date"
               value={date}
               onChange={(e) => { setDate(e.target.value); setSelectedDoctor(null); }}
+              disabled={isFollowUpBooking}
               min={new Date().toISOString().split('T')[0]} 
-              className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-slate-50 focus:bg-white cursor-pointer"
+              className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-slate-50 focus:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
         </div>
@@ -261,10 +324,11 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
           <textarea
             value={complaints}
             onChange={(e) => setComplaints(e.target.value)}
+            disabled={isFollowUpBooking}
             maxLength={1000}
             rows={3}
             placeholder="Please briefly describe your symptoms or reason for the visit..."
-            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-slate-50 focus:bg-white resize-none"
+            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-slate-50 focus:bg-white resize-none disabled:opacity-60 disabled:cursor-not-allowed"
           />
         </div>
 
@@ -285,12 +349,13 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
               {filteredDoctors.map(doc => (
                 <button
                   key={doc._id}
-                  onClick={() => setSelectedDoctor(doc._id)}
+                  onClick={() => !isFollowUpBooking && setSelectedDoctor(doc._id)}
+                  disabled={isFollowUpBooking && selectedDoctor !== doc._id}
                   className={`flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all duration-300 ${
                     selectedDoctor === doc._id
-                      ? 'border-blue-600 bg-blue-50 shadow-md shadow-blue-100 scale-[1.02]'
+                      ? 'border-blue-600 bg-blue-50 shadow-md shadow-blue-100 scale-[1.02] ring-2 ring-blue-400 ring-offset-1'
                       : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
-                  }`}
+                  } ${isFollowUpBooking && selectedDoctor !== doc._id ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}
                 >
                   {doc.avatar ? (
                      <img src={doc.avatar} alt={doc.firstName} className="w-12 h-12 rounded-full object-cover shrink-0 border border-blue-200 group-hover:border-blue-400 transition-all" />
@@ -326,14 +391,10 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
       </div>
 
       {/* --- Upcoming & Ongoing Appointments Section --- */}
-      <div className="space-y-4 pt-6">
-        <h3 className="text-xl font-bold text-slate-900">Upcoming Appointments</h3>
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          {activeAppointments.length === 0 ? (
-            <div className="text-center py-8 text-slate-500">
-              You have no active appointments.
-            </div>
-          ) : (
+      {activeAppointments.length > 0 && (
+        <div className="space-y-4 pt-6">
+          <h3 className="text-xl font-bold text-slate-900">Upcoming Appointments</h3>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-100">
@@ -342,7 +403,6 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                     <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Chief Complaints</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Date</th>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Follow-up Date</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
                   </tr>
                 </thead>
@@ -357,57 +417,11 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                     >
                       <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
                       <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
-                      <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
+                      <td className="px-6 py-4 text-slate-600 max-w-[250px] truncate">{appt.problem}</td>
                       <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
-                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
-                        {appt.followUpDate ? new Date(appt.followUpDate).toLocaleDateString() : 'N/A'}
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
                           appt.status === 'Ongoing' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
-                        }`}>
-                          {appt.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* --- Completed Appointments Section --- */}
-      {completedAppointments.length > 0 && (
-        <div className="space-y-4 pt-6">
-          <h3 className="text-xl font-bold text-slate-900">Completed Appointments</h3>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100">
-                  <tr>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Doctor Name</th>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Chief Complaints</th>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Date</th>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Follow-up Date</th>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {completedAppointments.map((appt) => (
-                    <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors border-l-4 border-transparent">
-                      <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
-                      <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
-                      <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
-                      <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
-                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
-                        {appt.followUpDate ? new Date(appt.followUpDate).toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          appt.status === 'Referred' ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-green-50 text-green-700 border border-green-100'
                         }`}>
                           {appt.status}
                         </span>
@@ -436,20 +450,87 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                     <th className="px-6 py-4 font-semibold text-slate-700">Original Date</th>
                     <th className="px-6 py-4 font-bold text-orange-700">Must Book Before</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {followUpAppointments.map((appt) => (
+                  {followUpAppointments.map((appt) => {
+                    const canBook = appt.status === 'Follow up required';
+                    return (
+                      <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors border-l-4 border-transparent">
+                        <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
+                        <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
+                        <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
+                        <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
+                        <td className="px-6 py-4 font-bold text-orange-600 whitespace-nowrap">
+                          {appt.followUpDate ? new Date(appt.followUpDate).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold shadow-sm border ${
+                            appt.status === 'Follow up required' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                            appt.status === 'Appointment Booked' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            appt.status === 'Follow up completed' ? 'bg-green-50 text-green-700 border-green-200' :
+                            'bg-red-50 text-red-700 border-red-200'
+                          }`}>
+                            {appt.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button 
+                            onClick={() => handleBookFollowUp(appt)}
+                            disabled={!canBook}
+                            className="inline-flex items-center gap-1 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 hover:border-blue-300 border border-slate-200 transition-colors font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:border-slate-100 disabled:text-slate-400"
+                          >
+                            Book <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Completed Appointments Section --- */}
+      {completedAppointments.length > 0 && (
+        <div className="space-y-4 pt-6">
+          <h3 className="text-xl font-bold text-slate-900">Completed Appointments</h3>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Doctor Name</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Department</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Chief Complaints</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">Date</th>
+                    {showFollowUpCol && <th className="px-6 py-4 font-semibold text-slate-700">Follow-up Date</th>}
+                    <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {completedAppointments.map((appt) => (
                     <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors border-l-4 border-transparent">
                       <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
                       <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
                       <td className="px-6 py-4 text-slate-600 max-w-[200px] truncate">{appt.problem}</td>
                       <td className="px-6 py-4 text-slate-700 font-medium whitespace-nowrap">{appt.date}</td>
-                      <td className="px-6 py-4 font-bold text-orange-600 whitespace-nowrap">
-                        {appt.followUpDate ? new Date(appt.followUpDate).toLocaleDateString() : 'N/A'}
-                      </td>
+                      
+                      {showFollowUpCol && (
+                        <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
+                          {appt.followUpDate ? new Date(appt.followUpDate).toLocaleDateString() : 'N/A'}
+                        </td>
+                      )}
+                      
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200 shadow-sm">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                          appt.status === 'Referred' ? 'bg-purple-50 text-purple-700 border-purple-100' : 
+                          appt.status === 'Not visited' ? 'bg-red-50 text-red-700 border-red-100' :
+                          'bg-green-50 text-green-700 border-green-100'
+                        }`}>
                           {appt.status}
                         </span>
                       </td>
