@@ -67,7 +67,6 @@ export const updatePatientProfile = async (req, res) => {
 // NEW: Book Appointment / Create Treatment Record
 export const bookAppointment = async (req, res) => {
   try {
-    // ADDED: Destructure followUp_for_record_id
     const { doctor_id, visitDate, chiefComplaint, followUp_for_record_id } = req.body;
 
     // Get the patient's profile ID using their logged-in user ID
@@ -75,6 +74,23 @@ export const bookAppointment = async (req, res) => {
     
     if (!patientProfile) {
       return res.status(404).json({ success: false, message: 'Patient profile not found.' });
+    }
+
+    // STRICT DUPLICATE VALIDATION: Same date, same doctor, same patient
+    const startOfDay = new Date(visitDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(visitDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const existingAppointment = await TreatmentRecord.findOne({
+      doctor_id,
+      patient_id: patientProfile._id,
+      visitDate: { $gte: startOfDay, $lte: endOfDay },
+      is_deleted: false
+    });
+
+    if (existingAppointment) {
+      return res.status(400).json({ success: false, message: 'You already have an appointment booked with this doctor on the selected date.' });
     }
 
     const newRecord = new TreatmentRecord({

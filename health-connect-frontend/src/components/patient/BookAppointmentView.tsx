@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Calendar, Smartphone, CreditCard, Building, X, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Calendar, Smartphone, CreditCard, Building, X, CheckCircle2, AlertTriangle, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { metadataApi, doctorApi, patientApi } from '../../services/api'; 
 
 type PaymentStep = 'HIDDEN' | 'SUMMARY' | 'OPTIONS' | 'SUCCESS';
@@ -33,6 +33,12 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
 
   const [appointments, setAppointments] = useState<BookedAppointment[]>([]);
   
+  // Pagination States
+  const [activePage, setActivePage] = useState(1);
+  const [completedPage, setCompletedPage] = useState(1);
+  const [followUpPage, setFollowUpPage] = useState(1);
+  const itemsPerPage = 5;
+
   // Real Data States
   const [departmentsList, setDepartmentsList] = useState<any[]>([]);
   const [doctorsList, setDoctorsList] = useState<any[]>([]);
@@ -121,6 +127,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
           isFollowUpParent: record.outcomeStatus === 'Follow up required',
           status: calculateStatus(record, rawData)
         }));
+        // Appointments come pre-sorted latest first from backend
         setAppointments(formattedAppts);
       }
     } catch (error) {
@@ -157,7 +164,6 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     setIsFollowUpBooking(true);
     setFollowUpSourceId(appt.id);
     
-    // Lock in the fields required
     setDepartment(appt.department);
     if (appt.followUpDate) {
       setDate(new Date(appt.followUpDate).toISOString().split('T')[0]);
@@ -165,7 +171,6 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     setComplaints(`${appt.problem} - Follow up required`);
     setSelectedDoctor(appt.doctorId);
     
-    // Scroll to the top to see the form
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -177,7 +182,6 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     setComplaints('');
     setSelectedDoctor(null);
   };
-  // ------------------------------------
 
   const handleConfirmAppointmentClick = () => {
     if (!complaints.trim()) {
@@ -186,14 +190,14 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     }
 
     if (selectedDoctorDetails) {
+      // Strict frontend validation for exact doctor + date match across ALL statuses
       const isDuplicate = appointments.some(appt => 
         appt.doctorId === selectedDoctorDetails._id && 
-        appt.date === date && 
-        (appt.status === 'Upcoming' || appt.status === 'Ongoing') 
+        appt.date === date
       );
 
-      if (isDuplicate && !isFollowUpBooking) {
-        showToast("You already have a pending appointment with this doctor on the selected date.", "error");
+      if (isDuplicate) {
+        showToast("You already have an appointment with this doctor on the selected date.", "error");
         return;
       }
     }
@@ -214,7 +218,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
         doctor_id: selectedDoctorDetails?._id,
         visitDate: date,
         chiefComplaint: complaints,
-        followUp_for_record_id: followUpSourceId // Sends ID if it exists
+        followUp_for_record_id: followUpSourceId 
       });
 
       if (res.success && selectedDoctorDetails) {
@@ -226,6 +230,9 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
           
           // Re-fetch data to automatically recalculate linked statuses accurately
           await fetchBookingData();
+          
+          // Reset pagination to see the newest record
+          setActivePage(1);
           setSelectedPaymentMethod('');
         }, 2000);
 
@@ -239,6 +246,51 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     }
   };
 
+  // Reusable Pagination UI Renderer
+  const renderPagination = (currentPage: number, totalItems: number, setPage: (page: number) => void) => {
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between rounded-b-2xl">
+        <span className="text-sm text-slate-500 hidden sm:inline-block">
+          Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems}
+        </span>
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-center">
+          <button 
+            onClick={() => setPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+            <button 
+              key={page} 
+              onClick={() => setPage(page)}
+              className={`w-8 h-8 rounded-lg font-semibold text-sm transition-colors ${
+                currentPage === page 
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+          
+          <button 
+            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return <div className="text-center py-20 text-slate-500">Loading booking data...</div>;
   }
@@ -247,6 +299,11 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
   const activeAppointments = appointments.filter(a => !a.isFollowUpParent && (a.status === 'Upcoming' || a.status === 'Ongoing'));
   const completedAppointments = appointments.filter(a => !a.isFollowUpParent && (a.status === 'Completed' || a.status === 'Referred' || a.status === 'Not visited'));
   const followUpAppointments = appointments.filter(a => a.isFollowUpParent);
+
+  // Paginate arrays
+  const paginatedActive = activeAppointments.slice((activePage - 1) * itemsPerPage, activePage * itemsPerPage);
+  const paginatedFollowUp = followUpAppointments.slice((followUpPage - 1) * itemsPerPage, followUpPage * itemsPerPage);
+  const paginatedCompleted = completedAppointments.slice((completedPage - 1) * itemsPerPage, completedPage * itemsPerPage);
 
   // Dynamic Completed Columns
   const showFollowUpCol = completedAppointments.some(a => a.followUpDate);
@@ -394,7 +451,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
       {activeAppointments.length > 0 && (
         <div className="space-y-4 pt-6">
           <h3 className="text-xl font-bold text-slate-900">Upcoming Appointments</h3>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col overflow-hidden transition-all hover:shadow-md">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-100">
@@ -407,7 +464,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {activeAppointments.map((appt) => (
+                  {paginatedActive.map((appt) => (
                     <tr 
                       key={appt.id} 
                       id={`appointment-${appt.id}`} 
@@ -431,6 +488,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                 </tbody>
               </table>
             </div>
+            {renderPagination(activePage, activeAppointments.length, setActivePage)}
           </div>
         </div>
       )}
@@ -439,7 +497,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
       {followUpAppointments.length > 0 && (
         <div className="space-y-4 pt-6">
           <h3 className="text-xl font-bold text-slate-900">Follow-up Required Appointments</h3>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md ring-1 ring-orange-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col overflow-hidden transition-all hover:shadow-md ring-1 ring-orange-200">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-orange-50 border-b border-orange-100">
@@ -450,11 +508,11 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                     <th className="px-6 py-4 font-semibold text-slate-700">Original Date</th>
                     <th className="px-6 py-4 font-bold text-orange-700">Must Book Before</th>
                     <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
-                    <th className="px-6 py-4 font-semibold text-slate-700">Action</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {followUpAppointments.map((appt) => {
+                  {paginatedFollowUp.map((appt) => {
                     const canBook = appt.status === 'Follow up required';
                     return (
                       <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors border-l-4 border-transparent">
@@ -490,6 +548,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                 </tbody>
               </table>
             </div>
+            {renderPagination(followUpPage, followUpAppointments.length, setFollowUpPage)}
           </div>
         </div>
       )}
@@ -498,7 +557,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
       {completedAppointments.length > 0 && (
         <div className="space-y-4 pt-6">
           <h3 className="text-xl font-bold text-slate-900">Completed Appointments</h3>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col overflow-hidden transition-all hover:shadow-md">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-100">
@@ -512,7 +571,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {completedAppointments.map((appt) => (
+                  {paginatedCompleted.map((appt) => (
                     <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors border-l-4 border-transparent">
                       <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">{appt.doctorName}</td>
                       <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{appt.department}</td>
@@ -539,6 +598,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
                 </tbody>
               </table>
             </div>
+            {renderPagination(completedPage, completedAppointments.length, setCompletedPage)}
           </div>
         </div>
       )}
