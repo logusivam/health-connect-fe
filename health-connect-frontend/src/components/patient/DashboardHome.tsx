@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Activity, Pill, FileText, Clock, ChevronRight, X } from 'lucide-react';
+import { Calendar, Activity, Pill, FileText, Clock, ChevronRight, X, CheckCircle } from 'lucide-react';
 import type { ViewState } from '../../types/patient.types';
 import { patientApi } from '../../services/api'; 
 
@@ -7,23 +7,28 @@ interface DashboardHomeProps {
   onNavigate: (view: ViewState, recordId?: string) => void;
 }
 
-interface LiveMedication {
-  id: string; // Unique identifier for the UI list
+interface MedicationDisplay {
+  id: string; 
   name: string;
   duration: string;
   frequency: string;
   fromDate: string;
   toDate: string;
   doctorName: string;
+  status: 'Active' | 'Completed';
 }
 
 const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
-  const [selectedMed, setSelectedMed] = useState<LiveMedication | null>(null);
+  const [selectedMed, setSelectedMed] = useState<MedicationDisplay | null>(null);
   
   // Real Data States
   const [patientName, setPatientName] = useState<string>('Loading...');
   const [nextAppointment, setNextAppointment] = useState<any>(null);
-  const [activeMedications, setActiveMedications] = useState<LiveMedication[]>([]);
+  
+  // Medication States
+  const [activeMedications, setActiveMedications] = useState<MedicationDisplay[]>([]);
+  const [completedMedications, setCompletedMedications] = useState<MedicationDisplay[]>([]); // NEW
+  
   const [recentHistory, setRecentHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -33,7 +38,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
         const [profileRes, apptsRes, historyRes] = await Promise.all([
           patientApi.getProfile(),
           patientApi.getAppointments(),
-          patientApi.getHistory() // Fetch completed records to find live medications
+          patientApi.getHistory() // Fetch completed records to find ALL medications
         ]);
 
         if (profileRes.success) {
@@ -48,7 +53,6 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
           const threeDaysFromNow = new Date(today);
           threeDaysFromNow.setDate(today.getDate() + 3);
 
-          // Find pending appointments (must NOT have diagnosis or outcomeStatus)
           const upcomingAppts = apptsRes.data.filter((appt: any) => {
             const hasBeenSeen = appt.diagnosis || appt.outcomeStatus || appt.medications?.length > 0 || appt.medNotes || appt.additionalNotes;
             if (hasBeenSeen) return false;
@@ -65,17 +69,17 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
           }
         }
 
-        // --- 2. Process Active Medications ---
+        // --- 2. Process Active & Completed Medications ---
         if (historyRes.success) {
           const records = historyRes.data;
           
-          // Set recent history for the bottom card
           setRecentHistory(records.slice(0, 2));
 
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           
-          const liveMeds: LiveMedication[] = [];
+          const activeMeds: MedicationDisplay[] = [];
+          const completedMeds: MedicationDisplay[] = [];
 
           records.forEach((record: any) => {
             if (record.medications && record.medications.length > 0) {
@@ -83,32 +87,38 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
               visitDateObj.setHours(0, 0, 0, 0);
 
               record.medications.forEach((med: any, index: number) => {
-                // Parse duration string (e.g., "5 days") to extract the integer
                 const durationMatch = med.duration.match(/\d+/);
                 const durationDaysInt = durationMatch ? parseInt(durationMatch[0], 10) : 0;
 
-                // Calculate End Date
                 const endDateObj = new Date(visitDateObj);
                 endDateObj.setDate(endDateObj.getDate() + durationDaysInt);
                 endDateObj.setHours(23, 59, 59, 999);
 
-                // If today is <= the end date, the medication is still "live"
+                const medData: MedicationDisplay = {
+                  id: `${record._id}-med-${index}`,
+                  name: med.name,
+                  duration: med.duration,
+                  frequency: med.frequency,
+                  fromDate: visitDateObj.toLocaleDateString(),
+                  toDate: endDateObj.toLocaleDateString(),
+                  doctorName: `Dr. ${record.doctor_id?.firstName} ${record.doctor_id?.lastName}`,
+                  status: 'Active' // Temporary
+                };
+
+                // Filter logic based on end date
                 if (today.getTime() <= endDateObj.getTime()) {
-                  liveMeds.push({
-                    id: `${record._id}-med-${index}`,
-                    name: med.name,
-                    duration: med.duration,
-                    frequency: med.frequency,
-                    fromDate: visitDateObj.toLocaleDateString(),
-                    toDate: endDateObj.toLocaleDateString(),
-                    doctorName: `Dr. ${record.doctor_id?.firstName} ${record.doctor_id?.lastName}`
-                  });
+                  medData.status = 'Active';
+                  activeMeds.push(medData);
+                } else {
+                  medData.status = 'Completed';
+                  completedMeds.push(medData);
                 }
               });
             }
           });
 
-          setActiveMedications(liveMeds);
+          setActiveMedications(activeMeds);
+          setCompletedMedications(completedMeds);
         }
 
       } catch (error) {
@@ -231,38 +241,72 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Recent Activity */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="font-semibold text-slate-800">Recent Treatment History</h3>
-        </div>
-        <div className="divide-y divide-slate-100">
+      {/* Row 2: Completed Meds & Recent History */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Completed Medications */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col min-h-[300px]">
+          <div className="flex items-center gap-3 mb-4 shrink-0">
+            <div className="p-2.5 bg-green-50 text-green-600 rounded-xl">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <h3 className="font-semibold text-slate-800">Completed Medications</h3>
+          </div>
+          
           {isLoading ? (
-             <div className="px-6 py-8 text-center text-slate-500">Loading history...</div>
-          ) : recentHistory.length === 0 ? (
-             <div className="px-6 py-8 text-center text-slate-500">No recent treatment history found.</div>
+            <p className="text-sm text-slate-500">Loading history...</p>
+          ) : completedMedications.length === 0 ? (
+            <p className="text-sm text-slate-500 italic">No completed medications yet.</p>
           ) : (
-            recentHistory.map((record) => (
-              <div key={record._id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-blue-50 text-blue-600 rounded-lg hidden sm:block">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{record.diagnosis}</p>
-                    <p className="text-xs text-slate-500">Dr. {record.doctor_id?.firstName} {record.doctor_id?.lastName} • {new Date(record.visitDate).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => onNavigate('HISTORY', record._id)}
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1 transition-transform hover:translate-x-1 shrink-0 ml-4"
+            <ul className="space-y-3 overflow-y-auto pr-2 flex-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300 transition-colors">
+              {completedMedications.map((med) => (
+                <li 
+                  key={med.id} 
+                  className="flex items-center justify-between text-sm cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors group border-b border-slate-50 last:border-0"
+                  onClick={() => setSelectedMed(med)}
                 >
-                  View <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            ))
+                  <span className="font-medium text-slate-700 group-hover:text-green-600 transition-colors truncate max-w-[200px]">{med.name}</span>
+                  <span className="text-slate-500 text-xs bg-slate-100 px-2 py-1 rounded-md shrink-0">{med.toDate}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
+
+        {/* Recent Activity */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[300px]">
+          <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50 shrink-0">
+            <h3 className="font-semibold text-slate-800">Recent Treatment History</h3>
+          </div>
+          <div className="divide-y divide-slate-100 flex-1 overflow-y-auto">
+            {isLoading ? (
+               <div className="px-6 py-8 text-center text-slate-500">Loading history...</div>
+            ) : recentHistory.length === 0 ? (
+               <div className="px-6 py-8 text-center text-slate-500">No recent treatment history found.</div>
+            ) : (
+              recentHistory.map((record) => (
+                <div key={record._id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg hidden sm:block">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{record.diagnosis}</p>
+                      <p className="text-xs text-slate-500">Dr. {record.doctor_id?.firstName} {record.doctor_id?.lastName} • {new Date(record.visitDate).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => onNavigate('HISTORY', record._id)}
+                    className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1 transition-transform hover:translate-x-1 shrink-0 ml-4"
+                  >
+                    View <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
       </div>
 
       {/* Medication Popover Modal */}
@@ -276,11 +320,12 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
               <X className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-3 mb-5">
-              <div className="p-2.5 bg-teal-50 text-teal-600 rounded-xl">
-                <Pill className="w-5 h-5" />
+              <div className={`p-2.5 rounded-xl ${selectedMed.status === 'Active' ? 'bg-teal-50 text-teal-600' : 'bg-green-50 text-green-600'}`}>
+                {selectedMed.status === 'Active' ? <Pill className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
               </div>
               <h3 className="text-lg font-bold text-slate-900">Medication Info</h3>
             </div>
+            
             <div className="space-y-4 text-sm bg-slate-50 p-4 rounded-xl border border-slate-100">
               <div>
                 <p className="text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Medicine Name</p>
@@ -310,7 +355,14 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ onNavigate }) => {
                 <p className="text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Prescribed By</p>
                 <p className="font-medium text-slate-800">{selectedMed.doctorName}</p>
               </div>
+              <div className="pt-2 border-t border-slate-200">
+                 <p className="text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Status</p>
+                 <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-semibold ${selectedMed.status === 'Active' ? 'bg-teal-100 text-teal-800' : 'bg-green-100 text-green-800'}`}>
+                    {selectedMed.status}
+                 </span>
+              </div>
             </div>
+            
             <button 
               onClick={() => setSelectedMed(null)}
               className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl transition-colors"
