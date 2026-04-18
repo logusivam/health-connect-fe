@@ -4,6 +4,7 @@ import AuthPage from '../pages/auth/AuthPage';
 import PatientDashboard from '../pages/patient/PatientDashboard';
 import DoctorDashboard from '../pages/doctor/DoctorDashboard';
 import AdminDashboard from '../pages/admin/AdminDashboard';
+import HomePage from '../pages/HomePage';
 import type { Role } from '../types/auth.types';
 import { authApi } from '../services/api';
 import { HeartPulse } from 'lucide-react';
@@ -54,6 +55,8 @@ export default function AppRouter() {
 
   return (
     <Routes>
+      <Route path="/" element={<HomePage />} />
+      
       <Route path="/login" element={<AuthPage view="login" onLogin={handleLogin} />} />
       <Route path="/register" element={<AuthPage view="register" />} />
       <Route path="/forgot-password" element={<AuthPage view="forgot-password" />} />
