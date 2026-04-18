@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import favIcon from '../assets/logo-v1.png';
 
 export default function HomePage() {
   // We use standard hard navigation to sandbox the heavy 3D/GSAP scripts.
@@ -37,7 +38,7 @@ export default function HomePage() {
         <div className="ld-ring ld-r2"></div>
         <div className="ld-ring ld-r3"></div>
         <div className="ld-inner">
-          <div className="ld-logo"><div className="ld-logo-inner">Health<span>Connect</span></div></div>
+          <div className="ld-logo"><img src={favIcon} alt="HealthConnect Logo" className='w-12 h-12 ' /></div>
           <div className="ld-bar-wrap">
             <div className="ld-bar" id="ldb"></div>
             <div className="ld-bar-glow" id="ldg"></div>
@@ -61,7 +62,10 @@ export default function HomePage() {
 
       {/* NAV */}
       <nav id="nav">
-        <a href="#" className="nav-brand">Health<b>Connect</b></a>
+        <a href="/" className="nav-brand flex items-center gap-2">
+          <img src={favIcon} alt="HealthConnect Logo" className="w-10 h-10" />
+          <span>Health<b>Connect</b></span>
+        </a>
         <ul className="nav-links" id="nav-links">
           <li><a href="#patient-role">Patient</a></li>
           <li><a href="#doctor-role">Doctor</a></li>
@@ -70,7 +74,7 @@ export default function HomePage() {
           <li><a href="#stats">Stats</a></li>
         </ul>
         <div className="mw" id="nav-pill-wrap">
-          <button onClick={() => routeToApp('/register')} className="nav-pill" style={{ cursor: 'none', border: 'none'  }}>Get Started</button>
+          <button onClick={() => routeToApp('/register')} className="nav-pill" style={{ cursor: 'none', border: 'none' }}>Get Started</button>
         </div>
         <button className="nav-ham" id="nav-ham" aria-label="Menu">
           <span></span><span></span><span></span>
