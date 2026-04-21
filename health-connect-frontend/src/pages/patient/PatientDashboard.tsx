@@ -54,7 +54,7 @@ export default function PatientDashboard() {
           let hasMissing = false;
           
           for (const req of needsFollowUp) {
-            const fDateStr = new Date(req.followUpDate).toISOString().split('T')[0];
+            //const fDateStr = new Date(req.followUpDate).toISOString().split('T')[0];
             const originalVisitTime = new Date(req.visitDate).getTime();
             const fDateTime = new Date(req.followUpDate).getTime();
             
