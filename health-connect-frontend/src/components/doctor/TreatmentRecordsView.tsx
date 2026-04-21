@@ -61,7 +61,7 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
   const [patientSuggestions, setPatientSuggestions] = useState<any[]>([]);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   
-  const [medicineQuery, setMedicineQuery] = useState('');
+  //const [medicineQuery, setMedicineQuery] = useState('');
   const [medicineSuggestions, setMedicineSuggestions] = useState<string[]>([]);
   const [showMedicineDropdown, setShowMedicineDropdown] = useState(false);
 
