@@ -9,6 +9,14 @@ interface ProfileViewProps {
   onProfileLoaded?: (name: string, id: string) => void; 
 }
 
+const COUNTRY_CODES = [
+  { code: '+91', country: 'IN', lengths: [10] },
+  { code: '+1', country: 'US/CA', lengths: [10] },
+  { code: '+44', country: 'UK', lengths: [10, 11] },
+  { code: '+61', country: 'AU', lengths: [9] },
+  { code: '+971', country: 'UAE', lengths: [9] },
+];
+
 const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onProfileLoaded }) => {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -16,8 +24,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
   // Edit States for inline editing
   const [editField, setEditField] = useState<'address' | 'emergencyContactName' | 'emergencyContactPhone' | 'email' | 'phone' | 'name' | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [editValueLast, setEditValueLast] = useState(''); // Specifically for last name
-  const [avatarError, setAvatarError] = useState<string>(''); // For 4MB limit error
+  const [editValueLast, setEditValueLast] = useState(''); 
+  const [editCountryCode, setEditCountryCode] = useState('+91');
+  const [editError, setEditError] = useState<string>('');
+  
+  const [avatarError, setAvatarError] = useState<string>(''); 
 
   useEffect(() => {
     fetchProfile();
@@ -29,7 +40,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
       if (res.success) {
         setProfile(res.data);
         
-        // Sync parent states
         if (res.data.avatar) onAvatarChange(res.data.avatar);
         if (onProfileLoaded) onProfileLoaded(`${res.data.firstName} ${res.data.lastName}`, res.data._id);
       }
@@ -44,16 +54,14 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setAvatarError(''); // Clear previous errors
+    setAvatarError(''); 
 
-    // 1. Check File Size (Limit: 4MB)
-    const MAX_SIZE = 4 * 1024 * 1024; // 4MB in bytes
+    const MAX_SIZE = 4 * 1024 * 1024; 
     if (file.size > MAX_SIZE) {
       setAvatarError('Image is too large. Must be less than 4MB.');
       return;
     }
 
-    // 2. Convert Image to WebP using Canvas
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
@@ -67,14 +75,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
         
         ctx.drawImage(img, 0, 0, img.width, img.height);
         
-        // Output as WebP format with 0.8 quality
         const webpBase64 = canvas.toDataURL('image/webp', 0.8);
 
-        // Optimistic UI update
         onAvatarChange(webpBase64);
         setProfile((prev: any) => ({ ...prev, avatar: webpBase64 }));
         
-        // Save to backend immediately
         await patientApi.updateProfile({ avatarBase64: webpBase64 });
       };
       img.src = event.target?.result as string;
@@ -82,15 +87,82 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
     reader.readAsDataURL(file);
   };
 
+  const startEdit = (field: any) => {
+    setEditField(field);
+    setEditError('');
+    
+    if (field === 'name') {
+      setEditValue(profile.firstName);
+      setEditValueLast(profile.lastName);
+    } else if (field === 'phone' || field === 'emergencyContactPhone') {
+      const rawPhone = profile[field] || '';
+      let foundCode = '+91';
+      let num = rawPhone;
+      
+      for (const cc of COUNTRY_CODES) {
+        if (rawPhone.startsWith(cc.code)) {
+          foundCode = cc.code;
+          num = rawPhone.substring(cc.code.length).trim();
+          break;
+        }
+      }
+      setEditCountryCode(foundCode);
+      setEditValue(num.replace(/\D/g, '')); // Strip non-digits
+    } else {
+      setEditValue(profile[field] || '');
+    }
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, ''); // Enforce numbers only
+    const ccDef = COUNTRY_CODES.find(c => c.code === editCountryCode);
+    const maxLen = ccDef ? Math.max(...ccDef.lengths) : 15;
+    
+    if (val.length <= maxLen) {
+      setEditValue(val);
+      setEditError('');
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!editField) return;
 
+    // Strict Validations
+    if (editField === 'email') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editValue)) {
+        setEditError('Please enter a valid email address.');
+        return;
+      }
+    }
+
+    if (editField === 'phone' || editField === 'emergencyContactPhone') {
+      const ccDef = COUNTRY_CODES.find(c => c.code === editCountryCode);
+      if (ccDef && !ccDef.lengths.includes(editValue.length)) {
+        setEditError(`Number must be exactly ${ccDef.lengths.join(' or ')} digits for ${editCountryCode}.`);
+        return;
+      }
+    }
+
+    if (editField === 'address' && editValue.length > 200) {
+      setEditError('Address cannot exceed 200 characters.');
+      return;
+    }
+
+    if (editField === 'emergencyContactName' && editValue.length > 50) {
+      setEditError('Name cannot exceed 50 characters.');
+      return;
+    }
+
     if (editField === 'name') {
+      if (!editValue.trim() || !editValueLast.trim()) {
+        setEditError('Both First and Last Name are required.');
+        return;
+      }
       const originalFirst = profile.firstName;
       const originalLast = profile.lastName;
 
       setProfile((prev: any) => ({ ...prev, firstName: editValue, lastName: editValueLast }));
-
       const res = await patientApi.updateProfile({ firstName: editValue, lastName: editValueLast });
       
       if (!res.success) {
@@ -100,33 +172,25 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
         if (onProfileLoaded) onProfileLoaded(`${editValue} ${editValueLast}`, profile._id);
       }
     } else {
-      // Keep old value in case API fails (like duplicate email)
       const originalValue = profile[editField];
+      let finalPayloadValue = editValue;
       
-      // Optimistic update
-      setProfile((prev: any) => ({ ...prev, [editField]: editValue }));
-      
-      // Save to backend
-      const res = await patientApi.updateProfile({ [editField]: editValue });
+      // Re-combine country code and number for saving
+      if (editField === 'phone' || editField === 'emergencyContactPhone') {
+        finalPayloadValue = `${editCountryCode} ${editValue}`;
+      }
+
+      setProfile((prev: any) => ({ ...prev, [editField]: finalPayloadValue }));
+      const res = await patientApi.updateProfile({ [editField]: finalPayloadValue });
       
       if (!res.success) {
         alert(res.message || "Failed to update field.");
-        // Rollback on failure
         setProfile((prev: any) => ({ ...prev, [editField]: originalValue }));
       }
     }
     
     setEditField(null);
-  };
-
-  const startEdit = (field: any) => {
-    setEditField(field);
-    if (field === 'name') {
-      setEditValue(profile.firstName);
-      setEditValueLast(profile.lastName);
-    } else {
-      setEditValue(profile[field] || '');
-    }
+    setEditError('');
   };
 
   if (isLoading) return <div className="text-center py-20 text-slate-500">Loading profile data...</div>;
@@ -162,7 +226,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
               </label>
             </div>
             
-            {/* Display 4MB Error Message */}
             {avatarError && (
               <p className="text-red-500 text-xs font-semibold mt-3 flex items-center gap-1 max-w-[120px] text-center leading-tight">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -173,13 +236,16 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
 
           <div className="text-center sm:text-left pt-2">
             {/* Editable Name Section */}
-            <div className="flex items-center gap-3 mb-1 group">
+            <div className="flex items-center justify-center sm:justify-start gap-3 mb-1 group">
               {editField === 'name' ? (
-                <div className="flex items-center gap-2">
-                  <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="px-3 py-1 border rounded-lg text-lg font-bold w-32 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="First Name" />
-                  <input type="text" value={editValueLast} onChange={(e) => setEditValueLast(e.target.value)} className="px-3 py-1 border rounded-lg text-lg font-bold w-32 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Last Name" />
-                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                <div className="flex flex-col gap-1 w-full">
+                  <div className="flex items-center gap-2">
+                    <input type="text" maxLength={50} value={editValue} onChange={(e) => { setEditValue(e.target.value); setEditError(''); }} className="px-3 py-1 border rounded-lg text-lg font-bold w-32 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="First Name" />
+                    <input type="text" maxLength={50} value={editValueLast} onChange={(e) => { setEditValueLast(e.target.value); setEditError(''); }} className="px-3 py-1 border rounded-lg text-lg font-bold w-32 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Last Name" />
+                    <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                    <button onClick={() => { setEditField(null); setEditError(''); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                  </div>
+                  {editError && <p className="text-red-500 text-xs font-semibold">{editError}</p>}
                 </div>
               ) : (
                 <>
@@ -220,10 +286,13 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                     )}
                   </div>
                   {editField === 'email' ? (
-                    <div className="flex gap-2">
-                      <input type="email" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex gap-2">
+                        <input type="email" value={editValue} onChange={(e) => { setEditValue(e.target.value); setEditError(''); }} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                        <button onClick={() => { setEditField(null); setEditError(''); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                      </div>
+                      {editError && <p className="text-red-500 text-xs font-semibold">{editError}</p>}
                     </div>
                   ) : (
                     <p className="font-medium text-slate-900">{profile.email}</p>
@@ -241,10 +310,30 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                     )}
                   </div>
                   {editField === 'phone' ? (
-                    <div className="flex gap-2">
-                      <input type="tel" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    <div className="flex flex-col gap-1 w-full">
+                      <div className="flex gap-2">
+                        <select
+                          value={editCountryCode}
+                          onChange={(e) => {
+                            setEditCountryCode(e.target.value);
+                            setEditValue(''); // Reset value so it adheres to new limits
+                            setEditError('');
+                          }}
+                          className="w-24 px-2 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 cursor-pointer"
+                        >
+                          {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.code} ({c.country})</option>)}
+                        </select>
+                        <input 
+                          type="tel" 
+                          value={editValue} 
+                          onChange={handlePhoneChange} 
+                          className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+                          placeholder="Numbers only"
+                        />
+                        <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                        <button onClick={() => { setEditField(null); setEditError(''); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                      </div>
+                      {editError && <p className="text-red-500 text-xs font-semibold">{editError}</p>}
                     </div>
                   ) : (
                     <p className="font-medium text-slate-900">{profile.phone}</p>
@@ -262,10 +351,13 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                     )}
                   </div>
                   {editField === 'address' ? (
-                    <div className="flex gap-2">
-                      <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex gap-2">
+                        <input type="text" maxLength={200} value={editValue} onChange={(e) => { setEditValue(e.target.value); setEditError(''); }} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                        <button onClick={() => { setEditField(null); setEditError(''); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                      </div>
+                      {editError && <p className="text-red-500 text-xs font-semibold">{editError}</p>}
                     </div>
                   ) : (
                     <p className="font-medium text-slate-900">{profile.address || 'Not provided'}</p>
@@ -290,10 +382,13 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                     )}
                   </div>
                   {editField === 'emergencyContactName' ? (
-                    <div className="flex gap-2">
-                      <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex gap-2">
+                        <input type="text" maxLength={50} value={editValue} onChange={(e) => { setEditValue(e.target.value); setEditError(''); }} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                        <button onClick={() => { setEditField(null); setEditError(''); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                      </div>
+                      {editError && <p className="text-red-500 text-xs font-semibold">{editError}</p>}
                     </div>
                   ) : (
                     <p className="font-medium text-slate-900">{profile.emergencyContactName || 'Not provided'}</p>
@@ -311,10 +406,30 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                     )}
                   </div>
                   {editField === 'emergencyContactPhone' ? (
-                    <div className="flex gap-2">
-                      <input type="tel" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                      <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                      <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                    <div className="flex flex-col gap-1 w-full">
+                      <div className="flex gap-2">
+                        <select
+                          value={editCountryCode}
+                          onChange={(e) => {
+                            setEditCountryCode(e.target.value);
+                            setEditValue(''); // Reset value so it adheres to new limits
+                            setEditError('');
+                          }}
+                          className="w-24 px-2 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 cursor-pointer"
+                        >
+                          {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.code} ({c.country})</option>)}
+                        </select>
+                        <input 
+                          type="tel" 
+                          value={editValue} 
+                          onChange={handlePhoneChange} 
+                          className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+                          placeholder="Numbers only"
+                        />
+                        <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                        <button onClick={() => { setEditField(null); setEditError(''); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                      </div>
+                      {editError && <p className="text-red-500 text-xs font-semibold">{editError}</p>}
                     </div>
                   ) : (
                     <p className="font-medium text-slate-900">{profile.emergencyContactPhone || 'Not provided'}</p>
