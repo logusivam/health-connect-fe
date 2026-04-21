@@ -169,7 +169,7 @@ export default function PatientDashboard() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
+        {/* <div className="p-4 border-t border-slate-800">
           <button 
             onClick={async () => { 
               await authApi.logout(); 
@@ -190,7 +190,7 @@ export default function PatientDashboard() {
                </div>
             )}
           </button>
-        </div>
+        </div> */}
       </aside>
 
       {/* Main Content Area */}
