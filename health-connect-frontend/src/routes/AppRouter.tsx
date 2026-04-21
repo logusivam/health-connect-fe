@@ -4,9 +4,10 @@ import AuthPage from '../pages/auth/AuthPage';
 import PatientDashboard from '../pages/patient/PatientDashboard';
 import DoctorDashboard from '../pages/doctor/DoctorDashboard';
 import AdminDashboard from '../pages/admin/AdminDashboard';
+import HomePage from '../pages/HomePage';
+import favIcon from '../assets/logo-v1.png';
 import type { Role } from '../types/auth.types';
-import { authApi } from '../services/api';
-import { HeartPulse } from 'lucide-react';
+import { authApi } from '../services/api'; 
 
 export default function AppRouter() {
   const navigate = useNavigate();
@@ -46,7 +47,7 @@ export default function AppRouter() {
   if (isInitializing) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <HeartPulse className="w-12 h-12 text-blue-600 animate-pulse mb-4" />
+        <img src={favIcon} alt="HealthConnect Logo" className='w-12 h-12 ' />
         <p className="text-slate-500 font-medium">Securing session...</p>
       </div>
     );
@@ -54,6 +55,8 @@ export default function AppRouter() {
 
   return (
     <Routes>
+      <Route path="/" element={<HomePage />} />
+
       <Route path="/login" element={<AuthPage view="login" onLogin={handleLogin} />} />
       <Route path="/register" element={<AuthPage view="register" />} />
       <Route path="/forgot-password" element={<AuthPage view="forgot-password" />} />

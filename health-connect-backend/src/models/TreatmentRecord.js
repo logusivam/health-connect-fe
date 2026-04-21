@@ -5,6 +5,7 @@ const treatmentRecordSchema = new mongoose.Schema({
   _id: { type: String },
   doctor_id: { type: String, ref: 'DoctorProfile', required: true },
   patient_id: { type: String, ref: 'PatientProfile', required: true },
+  followUp_for_record_id: { type: String, ref: 'TreatmentRecord', default: null }, // Link to the original record for follow-ups
   visitDate: { type: Date, required: true },
   chiefComplaint: { type: String, required: true },
   

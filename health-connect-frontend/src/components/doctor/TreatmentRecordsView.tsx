@@ -3,11 +3,9 @@ import { Edit, Save, Search, Download, X, FileText, AlertTriangle, CheckCircle2,
 import { doctorApi } from '../../services/api';
 
 interface TreatmentRecordsViewProps {
-  highlightedRecordId?: string | null; // NEW: Optional prop to highlight a specific record
+  highlightedRecordId?: string | null; 
 }
 
-
-// Interface for the local medication state
 interface MedicationEntry {
   name: string;
   frequency: string;
@@ -49,7 +47,7 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
   // Medication Array State
   const [medicationsList, setMedicationsList] = useState<MedicationEntry[]>([]);
 
-  // Current Medication Input State (before adding to list)
+  // Current Medication Input State
   const [currentMed, setCurrentMed] = useState({
     name: '',
     frequency: '',
@@ -91,15 +89,34 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
     }
   };
 
-  // NEW: Detect highlighted record from Dashboard click and auto-open it
+  // UPDATED: Detect highlighted record from Dashboard and open it in 'Complete' mode
   useEffect(() => {
     if (highlightedRecordId && todayAppointments.length > 0) {
-      // Find the record in the pending list
       const pendingRecord = todayAppointments.find(r => r._id === highlightedRecordId);
       
       if (pendingRecord) {
-        // Trigger the exact same logic as clicking "Edit" manually
-        handleEditClick(pendingRecord);
+        // Prepare it as a fresh 'Complete Record' (NOT Edit Mode)
+        setIsEditing(null); 
+        setSelectedRecordId(pendingRecord._id);
+        setPatientQuery(`${pendingRecord.patient_id.firstName} ${pendingRecord.patient_id.lastName} (${pendingRecord.patient_id._id})`);
+        
+        setFormData(prev => ({
+          ...prev,
+          date: new Date(pendingRecord.visitDate).toISOString().split('T')[0],
+          complaint: pendingRecord.chiefComplaint || '',
+          diagnosis: '',
+          treatmentPrescribed: '',
+          followUpDate: '',
+          followUpInstruction: '',
+          outcomeStatus: '',
+          additionalNotes: '',
+          medNotes: ''
+        }));
+        
+        setMedicationsList([]);
+        setCurrentMed({ name: '', frequency: '', durationDays: '' });
+        
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }
   }, [highlightedRecordId, todayAppointments]);
@@ -154,7 +171,18 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+      const updatedData = { ...prev, [name]: value };
+      
+      // Auto-correct outcomeStatus if followUpDate is filled
+      if (name === 'followUpDate') {
+        if (value && (updatedData.outcomeStatus === 'Ongoing' || updatedData.outcomeStatus === 'Resolved')) {
+          updatedData.outcomeStatus = ''; // Reset conflicting status
+        }
+      }
+      
+      return updatedData;
+    });
   };
 
   const handleMedInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -275,10 +303,8 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
     }
 
     const filteredExport = records.filter(record => {
-      // Must contain diagnosis and outcomeStatus
       if (!record.diagnosis || !record.outcomeStatus) return false;
 
-      // Validate Timeframe via updatedAt
       const updated = new Date(record.updatedAt);
       return updated >= start && updated <= end;
     });
@@ -296,7 +322,6 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
     if (!exportData) return;
 
     if (format === 'excel') {
-      // Native CSV Export for Excel Compatibility
       const headers = [
         'Record ID', 'Updated At', 'Visit Date', 'Patient Name', 'Patient ID', 
         'Chief Complaint', 'Diagnosis', 'Treatment Prescribed', 'Medications', 
@@ -304,7 +329,6 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
       ];
       
       const csvRows = exportData.map(r => {
-        // Format medications array into a single readable string
         const medsString = r.medications && r.medications.length > 0 
           ? r.medications.map((m: any) => `${m.name} (${m.frequency}, ${m.duration})`).join(' | ') 
           : 'None';
@@ -341,14 +365,12 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
       setIsExportModalOpen(false);
 
     } else if (format === 'pdf') {
-      // Native Print Window Export for PDF
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
         showToast("Pop-up blocked. Please allow pop-ups to generate PDF.", "error");
         return;
       }
 
-      // Title tag sets the default save name for the PDF in the browser print dialog
       const html = `
         <html>
           <head>
@@ -620,8 +642,8 @@ const TreatmentRecordsView: React.FC<TreatmentRecordsViewProps> = ({ highlighted
                 <label className="text-sm font-semibold text-slate-700">Outcome Status</label>
                 <select required name="outcomeStatus" value={formData.outcomeStatus} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none cursor-pointer">
                   <option value="" disabled>Select Outcome Status</option>
-                  <option value="Ongoing">Ongoing</option>
-                  <option value="Resolved">Resolved</option>
+                  {!formData.followUpDate && <option value="Ongoing">Ongoing</option>}
+                  {!formData.followUpDate && <option value="Resolved">Resolved</option>}
                   <option value="Referred">Referred</option>
                   <option value="Follow up required">Follow up required</option>
                 </select>

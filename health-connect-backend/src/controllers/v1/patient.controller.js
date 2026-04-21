@@ -28,7 +28,7 @@ export const updatePatientProfile = async (req, res) => {
     if (emergencyContactName !== undefined) profileUpdateData.emergencyContactName = emergencyContactName;
     if (emergencyContactPhone !== undefined) profileUpdateData.emergencyContactPhone = emergencyContactPhone;
     if (phone !== undefined) profileUpdateData.phone = phone;
-    // NEW: Allow updating name
+    // Allow updating name
     if (firstName !== undefined) profileUpdateData.firstName = firstName;
     if (lastName !== undefined) profileUpdateData.lastName = lastName;
     
@@ -67,7 +67,7 @@ export const updatePatientProfile = async (req, res) => {
 // NEW: Book Appointment / Create Treatment Record
 export const bookAppointment = async (req, res) => {
   try {
-    const { doctor_id, visitDate, chiefComplaint } = req.body;
+    const { doctor_id, visitDate, chiefComplaint, followUp_for_record_id } = req.body;
 
     // Get the patient's profile ID using their logged-in user ID
     const patientProfile = await PatientProfile.findOne({ user_id: req.user.id });
@@ -76,11 +76,29 @@ export const bookAppointment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Patient profile not found.' });
     }
 
+    // STRICT DUPLICATE VALIDATION: Same date, same doctor, same patient
+    const startOfDay = new Date(visitDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(visitDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const existingAppointment = await TreatmentRecord.findOne({
+      doctor_id,
+      patient_id: patientProfile._id,
+      visitDate: { $gte: startOfDay, $lte: endOfDay },
+      is_deleted: false
+    });
+
+    if (existingAppointment) {
+      return res.status(400).json({ success: false, message: 'You already have an appointment booked with this doctor on the selected date.' });
+    }
+
     const newRecord = new TreatmentRecord({
       doctor_id,
       patient_id: patientProfile._id,
       visitDate,
-      chiefComplaint
+      chiefComplaint,
+      followUp_for_record_id // Save the link to the DB
     });
 
     const savedRecord = await newRecord.save();
@@ -92,7 +110,7 @@ export const bookAppointment = async (req, res) => {
   }
 };
 
-// NEW: Fetch all appointments for the logged-in patient
+// Fetch all appointments for the logged-in patient
 export const getPatientAppointments = async (req, res) => {
   try {
     const patientProfile = await PatientProfile.findOne({ user_id: req.user.id });
@@ -116,7 +134,7 @@ export const getPatientAppointments = async (req, res) => {
   }
 };
 
-// NEW: Fetch all active unsuitable medicine flags for the logged-in patient
+// Fetch all active unsuitable medicine flags for the logged-in patient
 export const getPatientFlags = async (req, res) => {
   try {
     const patientProfile = await PatientProfile.findOne({ user_id: req.user.id });
@@ -125,12 +143,11 @@ export const getPatientFlags = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Patient profile not found.' });
     }
 
-    // Fetch records where is_active is true (Unsuitable) and populate the doctor's details
     const flags = await UnsuitableMedicine.find({ 
       patient_id: patientProfile._id, 
-      is_active: true // Ensure we only get active 'Unsuit' flags
+      is_active: true 
     })
-    .populate('flagged_by_doctor_id', 'firstName lastName specialization') // Get doctor name & specialization
+    .populate('flagged_by_doctor_id', 'firstName lastName specialization') 
     .sort({ flagged_at: -1 });
 
     res.status(200).json({ success: true, data: flags });
@@ -140,7 +157,7 @@ export const getPatientFlags = async (req, res) => {
   }
 };
 
-// NEW: Fetch completed treatment records (Medical History) for the logged-in patient
+// Fetch completed treatment records (Medical History) for the logged-in patient
 export const getPatientHistory = async (req, res) => {
   try {
     const patientProfile = await PatientProfile.findOne({ user_id: req.user.id });
@@ -156,8 +173,8 @@ export const getPatientHistory = async (req, res) => {
       outcomeStatus: { $exists: true, $ne: "" },
       is_deleted: false 
     })
-    .populate('doctor_id', 'firstName lastName specialization department _id') // Get doctor details
-    .sort({ visitDate: -1 }); // Sort newest first
+    .populate('doctor_id', 'firstName lastName specialization department _id') 
+    .sort({ visitDate: -1 }); 
 
     res.status(200).json({ success: true, data: records });
   } catch (error) {
