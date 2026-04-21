@@ -10,7 +10,7 @@ import DoctorProfile from '../../models/DoctorProfile.js';
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production', // true in prod, false in dev
-  sameSite: 'Lax',
+  sameSite: 'none', // Allows cross-site cookies, required for secure cookies in cross-origin scenarios
   path: '/'
 };
 
