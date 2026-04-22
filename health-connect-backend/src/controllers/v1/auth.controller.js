@@ -109,13 +109,21 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // 4. Success: Reset all trackers
+    // 4. Success: Reset all trackers and push to login history
     user.current_failed_attempts = 0;
     user.is_locked = false;
     user.locked_until = null;
     user.mfa_send_count = 0; 
     user.mfa_blocked_until = null;
-    user.last_login_at = new Date();
+    
+    // Push the current session into the history array
+    user.login_history.push({ logged_in_at: new Date() });
+
+    // Prevent the array from growing infinitely (keeps last 10 logins)
+    if (user.login_history.length > 10) {
+      user.login_history.shift();
+    }
+
     await user.save();
 
     // 5. Generate Tokens

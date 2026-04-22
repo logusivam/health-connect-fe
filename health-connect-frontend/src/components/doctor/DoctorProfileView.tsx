@@ -8,6 +8,14 @@ interface DoctorProfileViewProps {
   onProfileUpdate?: (name: string, specialization: string) => void; 
 }
 
+// Phone validation rules by country code
+const COUNTRY_CODES = [
+  { code: '+91', label: 'IN (+91)', minLength: 10, maxLength: 10 },
+  { code: '+1', label: 'US/CA (+1)', minLength: 10, maxLength: 10 },
+  { code: '+44', label: 'UK (+44)', minLength: 10, maxLength: 11 },
+  { code: '+61', label: 'AU (+61)', minLength: 9, maxLength: 9 },
+];
+
 const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarChange, onProfileUpdate }) => {
   const [profile, setProfile] = useState<any>(null);
   const [departments, setDepartments] = useState<any[]>([]); // Store DB Departments
@@ -17,6 +25,8 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
   const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'education' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editValueLast, setEditValueLast] = useState('');
+  const [editCountryCode, setEditCountryCode] = useState('+91'); // Default country code
+  const [validationError, setValidationError] = useState<string>(''); // For input validation
   const [avatarError, setAvatarError] = useState<string>(''); 
 
   useEffect(() => {
@@ -94,29 +104,87 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
 
   const startEdit = (field: string) => {
     setEditField(field as any);
+    setValidationError('');
     if (field === 'name') {
       setEditValue(profile.firstName);
       setEditValueLast(profile.lastName);
+    } else if (field === 'contactPhone') {
+      const existingPhone = profile.contactPhone || '';
+      const foundCode = COUNTRY_CODES.find(c => existingPhone.startsWith(c.code));
+      if (foundCode) {
+        setEditCountryCode(foundCode.code);
+        setEditValue(existingPhone.slice(foundCode.code.length).trim());
+      } else {
+        setEditCountryCode('+91');
+        setEditValue(existingPhone.replace(/\D/g, ''));
+      }
     } else {
       setEditValue(profile[field] || '');
     }
   };
 
+  const cancelEdit = () => {
+    setEditField(null);
+    setValidationError('');
+  };
+
+  const handlePhoneInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Only allow numbers
+    const numbersOnly = e.target.value.replace(/\D/g, '');
+    const rule = COUNTRY_CODES.find(c => c.code === editCountryCode);
+    
+    // Cap at max length for the selected country code
+    if (rule && numbersOnly.length > rule.maxLength) {
+      setEditValue(numbersOnly.slice(0, rule.maxLength));
+    } else {
+      setEditValue(numbersOnly);
+    }
+    setValidationError('');
+  };
+
   const handleSaveEdit = async () => {
     if (!editField) return;
 
+    // Strict Validation Checks before saving
+    if (editField === 'contactEmail') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editValue)) {
+        setValidationError('Please enter a valid email address.');
+        return;
+      }
+    }
+    if (editField === 'contactPhone') {
+      const rule = COUNTRY_CODES.find(c => c.code === editCountryCode);
+      if (rule && (editValue.length < rule.minLength || editValue.length > rule.maxLength)) {
+        setValidationError(`Phone number must be ${rule.minLength === rule.maxLength ? rule.maxLength : `${rule.minLength}-${rule.maxLength}`} digits.`);
+        return;
+      }
+    }
+    if (editField === 'address' && editValue.trim().length > 200) {
+      setValidationError('Address cannot exceed 200 characters.');
+      return;
+    }
+    if (editField === 'education' && editValue.trim().length > 150) {
+      setValidationError('Education details cannot exceed 150 characters.');
+      return;
+    }
+
     let updatePayload: any = {};
+    let finalValue = editValue;
+
+    if (editField === 'contactPhone') {
+      finalValue = `${editCountryCode} ${editValue}`;
+    }
     
     if (editField === 'name') {
       updatePayload = { firstName: editValue, lastName: editValueLast };
       setProfile((prev: any) => ({ ...prev, firstName: editValue, lastName: editValueLast }));
     } else if (editField === 'department') {
-      // If department changes, automatically reset the specialization
       updatePayload = { department: editValue, specialization: '' };
       setProfile((prev: any) => ({ ...prev, department: editValue, specialization: '' }));
     } else {
-      updatePayload = { [editField]: editValue };
-      setProfile((prev: any) => ({ ...prev, [editField]: editValue }));
+      updatePayload = { [editField]: finalValue };
+      setProfile((prev: any) => ({ ...prev, [editField]: finalValue }));
     }
 
     const res = await doctorApi.updateProfile(updatePayload);
@@ -131,6 +199,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       }
     }
     setEditField(null);
+    setValidationError('');
   };
 
   const currentDeptObj = departments.find(d => d.name === profile?.department);
@@ -181,7 +250,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                 <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="px-3 py-1 border rounded-lg text-lg font-bold w-32 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="First Name" />
                 <input type="text" value={editValueLast} onChange={(e) => setEditValueLast(e.target.value)} className="px-3 py-1 border rounded-lg text-lg font-bold w-32 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Last Name" />
                 <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                <button onClick={cancelEdit} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
               </div>
             ) : (
               <>
@@ -216,7 +285,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                     ))}
                   </select>
                   <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                  <button onClick={cancelEdit} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
                 </div>
               ) : (
                 <p className="font-medium text-slate-900 text-lg">{profile.department || 'Not specified'}</p>
@@ -246,7 +315,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                     </div>
                   )}
                   {profile.department && <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>}
-                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                  <button onClick={cancelEdit} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
                 </div>
               ) : (
                 <p className="font-medium text-slate-900 text-lg">{profile.specialization || 'Not specified'}</p>
@@ -262,10 +331,22 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                  )}
               </div>
               {editField === 'contactEmail' ? (
-                <div className="flex gap-2">
-                  <input type="email" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
-                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                <div>
+                  <div className="flex gap-2">
+                    <input 
+                      type="email" 
+                      value={editValue} 
+                      onChange={(e) => {
+                        setEditValue(e.target.value);
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        setValidationError(emailRegex.test(e.target.value) ? '' : 'Please enter a valid email address.');
+                      }} 
+                      className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none" 
+                    />
+                    <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                    <button onClick={cancelEdit} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                  </div>
+                  {validationError && <p className="text-red-500 text-xs mt-1">{validationError}</p>}
                 </div>
               ) : (
                 <p className="font-medium text-slate-900 text-lg">{profile.contactEmail || 'Not specified'}</p>
@@ -281,10 +362,30 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                  )}
               </div>
               {editField === 'contactPhone' ? (
-                <div className="flex gap-2">
-                  <input type="tel" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
-                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                <div>
+                  <div className="flex gap-2">
+                    <select 
+                      value={editCountryCode} 
+                      onChange={(e) => {
+                        setEditCountryCode(e.target.value);
+                        setEditValue(''); // Clear number when country changes to enforce new limits
+                        setValidationError('');
+                      }} 
+                      className="px-2 py-1.5 border rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none"
+                    >
+                      {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                    </select>
+                    <input 
+                      type="text" 
+                      placeholder="Phone Number"
+                      value={editValue} 
+                      onChange={handlePhoneInputChange} 
+                      className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none" 
+                    />
+                    <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 shrink-0"><Save className="w-4 h-4" /></button>
+                    <button onClick={cancelEdit} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 shrink-0"><X className="w-4 h-4" /></button>
+                  </div>
+                  {validationError && <p className="text-red-500 text-xs mt-1">{validationError}</p>}
                 </div>
               ) : (
                 <p className="font-medium text-slate-900 text-lg">{profile.contactPhone || 'Not specified'}</p>
@@ -300,10 +401,20 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                  )}
               </div>
               {editField === 'education' ? (
-                <div className="flex gap-2">
-                  <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. MBBS, MD" />
-                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                <div>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      maxLength={150}
+                      value={editValue} 
+                      onChange={(e) => { setEditValue(e.target.value); setValidationError(''); }} 
+                      className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+                      placeholder="e.g. MBBS, MD" 
+                    />
+                    <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                    <button onClick={cancelEdit} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                  </div>
+                  {validationError && <p className="text-red-500 text-xs mt-1">{validationError}</p>}
                 </div>
               ) : (
                 <p className="font-medium text-slate-900 text-lg">{profile.education || 'Not specified'}</p>
@@ -319,10 +430,20 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                  )}
               </div>
               {editField === 'address' ? (
-                <div className="flex gap-2">
-                  <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                  <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
-                  <button onClick={() => setEditField(null)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                <div>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      maxLength={200}
+                      value={editValue} 
+                      onChange={(e) => { setEditValue(e.target.value); setValidationError(''); }} 
+                      className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                    />
+                    <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
+                    <button onClick={cancelEdit} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 text-right">{editValue.length}/200</p>
+                  {validationError && <p className="text-red-500 text-xs mt-1">{validationError}</p>}
                 </div>
               ) : (
                 <p className="font-medium text-slate-900 text-lg">{profile.address || 'Address not added yet'}</p>
@@ -354,7 +475,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
             await authApi.logout();
             window.location.href = '/login';
           }} 
-          className="flex items-center gap-2 px-8 py-3.5 text-white bg-slate-900 hover:bg-slate-800 rounded-full font-semibold transition-all hover:shadow-lg active:scale-95"
+          className="flex items-center gap-2 px-8 py-3.5 text-red-600 bg-white hover:bg-white hover:text-red-700 rounded-full font-semibold transition-all hover:shadow-lg active:scale-95"
         >
           <LogOut className="w-5 h-5" />
           Log Out Securely

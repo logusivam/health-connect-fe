@@ -9,13 +9,28 @@ import TreatmentRecord from '../../models/TreatmentRecord.js';
 export const getDoctorProfile = async (req, res) => {
   try {
     const profile = await DoctorProfile.findOne({ user_id: req.user.id });
-    const user = await User.findById(req.user.id).select('last_login_at');
+    
+    // Fetch the login history array instead of a single date
+    const user = await User.findById(req.user.id).select('login_history');
 
     if (!profile) return res.status(404).json({ success: false, message: 'Profile not found' });
 
+    // Determine the correct "Last Login" time to show in the UI
+    const history = user.login_history || [];
+    let previousSessionDate = null;
+
+    if (history.length > 1) {
+      // The very last item (history.length - 1) is the CURRENT active session.
+      // The item before it (history.length - 2) is their PREVIOUS login session.
+      previousSessionDate = history[history.length - 2].logged_in_at;
+    } else if (history.length === 1) {
+      // If it's their very first time logging in, just show the current time
+      previousSessionDate = history[0].logged_in_at;
+    }
+
     res.status(200).json({ 
       success: true, 
-      data: { ...profile.toObject(), last_login_at: user.last_login_at } 
+      data: { ...profile.toObject(), last_login_at: previousSessionDate } 
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error' });
