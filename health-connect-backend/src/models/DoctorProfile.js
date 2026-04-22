@@ -14,6 +14,17 @@ const doctorProfileSchema = new mongoose.Schema({
   contactPhone: { type: String }, // Mapped from phone
   address: { type: String, default: '' },
   avatar: { type: String }, // For base64 images
+  
+  // NEW: Leave/Permission array (Restricted to 1 month of data via controller)
+  leave_requests: [{
+    fromDate: { type: Date, required: true },
+    toDate: { type: Date, required: true },
+    hours: { type: Number, default: 0 },
+    type: { type: String, enum: ['LEAVE', 'PERMISSION'], required: true },
+    status: { type: String, default: 'RECORDED' },
+    appliedAt: { type: Date, default: Date.now }
+  }],
+
   is_deleted: { type: Boolean, default: false } // Soft delete
 }, { timestamps: true });
 

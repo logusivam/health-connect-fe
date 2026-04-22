@@ -9,8 +9,6 @@ import TreatmentRecord from '../../models/TreatmentRecord.js';
 export const getDoctorProfile = async (req, res) => {
   try {
     const profile = await DoctorProfile.findOne({ user_id: req.user.id });
-    
-    // Fetch the login history array instead of a single date
     const user = await User.findById(req.user.id).select('login_history');
 
     if (!profile) return res.status(404).json({ success: false, message: 'Profile not found' });
@@ -20,11 +18,8 @@ export const getDoctorProfile = async (req, res) => {
     let previousSessionDate = null;
 
     if (history.length > 1) {
-      // The very last item (history.length - 1) is the CURRENT active session.
-      // The item before it (history.length - 2) is their PREVIOUS login session.
       previousSessionDate = history[history.length - 2].logged_in_at;
     } else if (history.length === 1) {
-      // If it's their very first time logging in, just show the current time
       previousSessionDate = history[0].logged_in_at;
     }
 
@@ -39,24 +34,46 @@ export const getDoctorProfile = async (req, res) => {
 
 export const updateDoctorProfile = async (req, res) => {
   try {
-    const { firstName, lastName, specialization, department, contactEmail, contactPhone, address, avatarBase64, education } = req.body;
+    const { 
+      firstName, lastName, specialization, department, 
+      contactEmail, contactPhone, address, avatarBase64, education,
+      newLeaveRequest // NEW
+    } = req.body;
     
-    const updateData = {};
-    if (firstName) updateData.firstName = firstName;
-    if (lastName) updateData.lastName = lastName;
-    if (specialization !== undefined) updateData.specialization = specialization;
-    if (department !== undefined) updateData.department = department;
-    if (contactEmail !== undefined) updateData.contactEmail = contactEmail;
-    if (contactPhone !== undefined) updateData.contactPhone = contactPhone;
-    if (address !== undefined) updateData.address = address;
-    if (avatarBase64) updateData.avatar = avatarBase64;
-    if (education !== undefined) updateData.education = education;
+    let updateQuery = { $set: {} };
+    
+    if (firstName) updateQuery.$set.firstName = firstName;
+    if (lastName) updateQuery.$set.lastName = lastName;
+    if (specialization !== undefined) updateQuery.$set.specialization = specialization;
+    if (department !== undefined) updateQuery.$set.department = department;
+    if (contactEmail !== undefined) updateQuery.$set.contactEmail = contactEmail;
+    if (contactPhone !== undefined) updateQuery.$set.contactPhone = contactPhone;
+    if (address !== undefined) updateQuery.$set.address = address;
+    if (avatarBase64) updateQuery.$set.avatar = avatarBase64;
+    if (education !== undefined) updateQuery.$set.education = education;
+
+    // If there is a new leave request, push it to the array
+    if (newLeaveRequest) {
+      updateQuery.$push = { leave_requests: newLeaveRequest };
+    }
 
     const profile = await DoctorProfile.findOneAndUpdate(
       { user_id: req.user.id },
-      { $set: updateData },
+      updateQuery,
       { new: true }
     );
+
+    // ONE-MONTH DATA RETENTION CLEANUP
+    // Remove any leave requests older than 30 days to keep the array lean
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const filteredLeaves = profile.leave_requests.filter(req => req.fromDate >= thirtyDaysAgo);
+    
+    if (filteredLeaves.length !== profile.leave_requests.length) {
+      profile.leave_requests = filteredLeaves;
+      await profile.save();
+    }
 
     const user = await User.findById(req.user.id).select('last_login_at');
 

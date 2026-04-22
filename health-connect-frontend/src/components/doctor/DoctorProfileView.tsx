@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Clock, LogOut, Edit2, Save, X, AlertCircle } from 'lucide-react';
+import { Camera, Clock, LogOut, Edit2, Save, X, AlertCircle, Calendar, CalendarCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { doctorApi, authApi, metadataApi } from '../../services/api';
 
 interface DoctorProfileViewProps {
@@ -16,18 +16,26 @@ const COUNTRY_CODES = [
   { code: '+61', label: 'AU (+61)', minLength: 9, maxLength: 9 },
 ];
 
+const ITEMS_PER_PAGE = 5;
+
 const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarChange, onProfileUpdate }) => {
   const [profile, setProfile] = useState<any>(null);
-  const [departments, setDepartments] = useState<any[]>([]); // Store DB Departments
-  const [totalTreated, setTotalTreated] = useState<number>(0); // NEW: Real-time patient count
+  const [departments, setDepartments] = useState<any[]>([]); 
+  const [totalTreated, setTotalTreated] = useState<number>(0); 
   const [isLoading, setIsLoading] = useState(true);
 
   const [editField, setEditField] = useState<'name' | 'specialization' | 'department' | 'education' | 'contactEmail' | 'contactPhone' | 'address' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editValueLast, setEditValueLast] = useState('');
-  const [editCountryCode, setEditCountryCode] = useState('+91'); // Default country code
-  const [validationError, setValidationError] = useState<string>(''); // For input validation
+  const [editCountryCode, setEditCountryCode] = useState('+91'); 
+  const [validationError, setValidationError] = useState<string>(''); 
   const [avatarError, setAvatarError] = useState<string>(''); 
+
+  // LEAVE/PERMISSION STATES
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [leaveData, setLeaveData] = useState({ fromDate: '', toDate: '', hours: '' });
+  const [leaveError, setLeaveError] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     fetchData();
@@ -35,11 +43,10 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
 
   const fetchData = async () => {
     try {
-      // Fetch profile, departments, and treatment records concurrently
       const [profileRes, deptRes, recordsRes] = await Promise.all([
         doctorApi.getProfile(),
         metadataApi.getDepartments(),
-        doctorApi.getTreatmentRecords() // Fetch records to calculate unique patients
+        doctorApi.getTreatmentRecords() 
       ]);
 
       if (profileRes.success) {
@@ -53,12 +60,8 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       }
 
       if (recordsRes.success) {
-        // STRICT FILTER: Must have diagnosis and outcome status
         const validRecords = recordsRes.data.filter((r: any) => r.diagnosis && r.outcomeStatus);
-        
-        // UNIQUE PATIENTS ONLY: Map the patient IDs and put them in a Set to remove duplicates
         const uniquePatientIds = new Set(validRecords.map((r: any) => r.patient_id?._id || r.patient_id));
-        
         setTotalTreated(uniquePatientIds.size);
       }
     } catch (error) {
@@ -129,11 +132,9 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
   };
 
   const handlePhoneInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Only allow numbers
     const numbersOnly = e.target.value.replace(/\D/g, '');
     const rule = COUNTRY_CODES.find(c => c.code === editCountryCode);
     
-    // Cap at max length for the selected country code
     if (rule && numbersOnly.length > rule.maxLength) {
       setEditValue(numbersOnly.slice(0, rule.maxLength));
     } else {
@@ -145,7 +146,6 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
   const handleSaveEdit = async () => {
     if (!editField) return;
 
-    // Strict Validation Checks before saving
     if (editField === 'contactEmail') {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(editValue)) {
@@ -190,7 +190,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     const res = await doctorApi.updateProfile(updatePayload);
     if (!res.success) {
       alert("Failed to update field.");
-      fetchData(); // Rollback on failure
+      fetchData(); 
     } else {
       if (onProfileUpdate) {
         const updatedName = editField === 'name' ? `${editValue} ${editValueLast}` : `${profile.firstName} ${profile.lastName}`;
@@ -202,8 +202,54 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     setValidationError('');
   };
 
+  const handleLeaveSubmit = async () => {
+    setLeaveError('');
+    if (!leaveData.fromDate || !leaveData.toDate) {
+      setLeaveError('Both dates are required.');
+      return;
+    }
+    
+    const from = new Date(leaveData.fromDate);
+    const to = new Date(leaveData.toDate);
+
+    if (from > to) {
+      setLeaveError('To Date cannot be before From Date.');
+      return;
+    }
+
+    const hrs = Number(leaveData.hours) || 0;
+    
+    const calculatedType = (hrs > 0 && hrs <= 2) ? 'PERMISSION' : 'LEAVE';
+
+    const payload = {
+      newLeaveRequest: {
+        fromDate: from.toISOString(),
+        toDate: to.toISOString(),
+        hours: hrs,
+        type: calculatedType
+      }
+    };
+
+    const res = await doctorApi.updateProfile(payload);
+    if (res.success) {
+      setProfile(res.data);
+      setIsLeaveModalOpen(false);
+      setLeaveData({ fromDate: '', toDate: '', hours: '' });
+    } else {
+      setLeaveError('Failed to submit request.');
+    }
+  };
+
   const currentDeptObj = departments.find(d => d.name === profile?.department);
   const availableSpecializations = currentDeptObj ? currentDeptObj.specializations : [];
+
+  // Pagination derived data
+  const leaveRequests = profile?.leave_requests || [];
+  const totalPages = Math.ceil(leaveRequests.length / ITEMS_PER_PAGE);
+  const paginatedLeaves = leaveRequests.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   if (isLoading) return <div className="text-center py-20 text-slate-500">Loading profile data...</div>;
   if (!profile) return <div className="text-center py-20 text-red-500">Failed to load profile data.</div>;
@@ -368,7 +414,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                       value={editCountryCode} 
                       onChange={(e) => {
                         setEditCountryCode(e.target.value);
-                        setEditValue(''); // Clear number when country changes to enforce new limits
+                        setEditValue(''); 
                         setValidationError('');
                       }} 
                       className="px-2 py-1.5 border rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none"
@@ -450,8 +496,97 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
               )}
             </div>
 
+            {/* Absence Management */}
+            <div className="md:col-span-2 border-t border-slate-100 pt-6 mt-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Absence Management</p>
+                  <p className="text-sm text-slate-500 mt-0.5">Record upcoming leaves or short permissions.</p>
+                </div>
+                
+                <label className="flex items-center gap-2 cursor-pointer bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors w-fit shrink-0">
+                  <input 
+                    type="radio" 
+                    name="absenceToggle" 
+                    checked={isLeaveModalOpen} 
+                    onChange={() => setIsLeaveModalOpen(true)} 
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                  />
+                  <span className="text-sm font-semibold text-slate-700">Request Leave/Permission</span>
+                </label>
+              </div>
+
+              {leaveRequests.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mt-3 shadow-sm">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Type</th>
+                        <th className="px-4 py-3 font-semibold">From</th>
+                        <th className="px-4 py-3 font-semibold">To</th>
+                        <th className="px-4 py-3 font-semibold">Hours</th>
+                        <th className="px-4 py-3 font-semibold">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paginatedLeaves.map((req: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3">
+                            <span className={`px-2.5 py-1 text-xs font-bold rounded-md ${req.type === 'LEAVE' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
+                              {req.type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 font-medium">{new Date(req.fromDate).toLocaleDateString()}</td>
+                          <td className="px-4 py-3 text-slate-600 font-medium">{new Date(req.toDate).toLocaleDateString()}</td>
+                          <td className="px-4 py-3 text-slate-600">{req.type === 'PERMISSION' ? `${req.hours} hrs` : '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs font-semibold text-green-600 bg-green-50 px-2.5 py-1 rounded-md">{req.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page)}
+                            className={`w-8 h-8 flex items-center justify-center rounded-md text-sm font-medium transition-colors ${
+                              currentPage === page 
+                                ? 'bg-blue-600 text-white shadow-sm' 
+                                : 'text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Stats Footer */}
-            <div className="md:col-span-2 bg-blue-50/50 border border-blue-100 rounded-xl p-4 flex items-center justify-between mt-4">
+            <div className="md:col-span-2 bg-blue-50/50 border border-blue-100 rounded-xl p-4 flex items-center justify-between mt-2">
                <div>
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Last Login Session</p>
                   <p className="font-semibold text-slate-800 flex items-center gap-2">
@@ -468,19 +603,100 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
         </div>
       </div>
 
-      {/* Centered Logout Button */}
       <div className="flex justify-center pt-8 pb-12">
         <button 
           onClick={async () => { 
             await authApi.logout();
             window.location.href = '/login';
           }} 
-          className="flex items-center gap-2 px-8 py-3.5 text-red-600 bg-white hover:bg-white hover:text-red-700 rounded-full font-semibold transition-all hover:shadow-lg active:scale-95"
+          className="flex items-center gap-2 px-8 py-3.5 text-white bg-slate-900 hover:bg-slate-800 rounded-full font-semibold transition-all hover:shadow-lg active:scale-95"
         >
           <LogOut className="w-5 h-5" />
           Log Out Securely
         </button>
       </div>
+
+      {/* LEAVE/PERMISSION MODAL */}
+      {isLeaveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <CalendarCheck className="w-5 h-5 text-blue-600" />
+                Schedule Absence
+              </h3>
+              <button 
+                onClick={() => { setIsLeaveModalOpen(false); setLeaveError(''); setLeaveData({fromDate:'', toDate:'', hours:''}); }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-5">
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800">
+                <strong>Note:</strong> Requests up to 2 hours are recorded as "Permissions". Any request exceeding 2 hours will be automatically recorded as a full "Leave" for the selected dates.
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">From Date</label>
+                  <input 
+                    type="date" 
+                    min={new Date().toISOString().split('T')[0]} // Prevent past dates
+                    value={leaveData.fromDate}
+                    onChange={(e) => setLeaveData({...leaveData, fromDate: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">To Date</label>
+                  <input 
+                    type="date" 
+                    min={leaveData.fromDate || new Date().toISOString().split('T')[0]} 
+                    value={leaveData.toDate}
+                    onChange={(e) => setLeaveData({...leaveData, toDate: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Hours (Optional)</label>
+                <input 
+                  type="number" 
+                  min="1"
+                  max="24"
+                  placeholder="e.g., 2"
+                  value={leaveData.hours}
+                  onChange={(e) => setLeaveData({...leaveData, hours: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+
+              {leaveError && (
+                <p className="text-red-500 text-sm font-medium">{leaveError}</p>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button 
+                onClick={() => { setIsLeaveModalOpen(false); setLeaveError(''); setLeaveData({fromDate:'', toDate:'', hours:''}); }}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleLeaveSubmit}
+                className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm"
+              >
+                Submit Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
