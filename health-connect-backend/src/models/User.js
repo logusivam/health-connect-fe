@@ -22,7 +22,10 @@ const userSchema = new mongoose.Schema({
   mfa_send_count: { type: Number, default: 0 },
   mfa_blocked_until: { type: Date },
 
-  last_login_at: { type: Date },
+  // UPDATED: Store login history as an array of objects
+  login_history: [{
+    logged_in_at: { type: Date }
+  }],
   password_updated_at: { type: Date },
   is_deleted: { type: Boolean, default: false }
 }, { timestamps: true });
