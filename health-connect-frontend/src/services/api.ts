@@ -7,6 +7,13 @@ const fetchWithCookies = async (endpoint: string, options: RequestInit = {}) => 
     headers: { 'Content-Type': 'application/json', ...options.headers },
     credentials: 'include', // CRITICAL: This sends the httpOnly cookies
   });
+
+  // --- NEW: Global 401 Interceptor ---
+  // If the backend says the token is invalid/expired, broadcast it to the app.
+  if (res.status === 401) {
+    window.dispatchEvent(new Event('session-expired'));
+  }
+  
   return res.json();
 };
 
