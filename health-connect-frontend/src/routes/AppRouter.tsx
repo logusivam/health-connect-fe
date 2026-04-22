@@ -43,12 +43,16 @@ export default function AppRouter() {
     if (validRole === 'ADMIN') navigate('/admin/patient_records');
   };
 
-  // Show a loading screen while checking the session cookie
-  if (isInitializing) {
+  // Determine if we are currently loading the Home Page
+  const isHomePage = window.location.pathname === '/';
+
+  // Show a loading screen while checking the session cookie, EXCEPT on the home page.
+  // The home page has its own heavy 3D loader, so we let it render immediately.
+  if (isInitializing && !isHomePage) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <img src={favIcon} alt="HealthConnect Logo" className='w-12 h-12 ' />
-        <p className="text-slate-500 font-medium">Securing session...</p>
+        <img src={favIcon} alt="HealthConnect Logo" className='w-12 h-12 animate-pulse' />
+        <p className="text-slate-500 font-medium mt-4">Securing session...</p>
       </div>
     );
   }
