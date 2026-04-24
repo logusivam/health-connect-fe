@@ -1,6 +1,6 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom'; // 1. Import useNavigate
-import { HeartPulse } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // 1. Import useNavigate 
+import favIcon from '../../assets/logo-v1.png';
 
 interface TopbarProps {
   avatar?: string;
@@ -14,8 +14,8 @@ const Topbar: React.FC<TopbarProps> = ({ avatar, name, patientId }) => {
   return (
     <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-10 transition-all duration-300">
       <div className="flex items-center gap-4 lg:hidden">
-        <div className="bg-blue-600 p-1.5 rounded-lg">
-          <HeartPulse className="w-5 h-5 text-white" strokeWidth={2.5} />
+        <div className="bg-transparent rounded-lg">
+          <img src={favIcon} alt="Favicon" className="w-10 h-10" />
         </div>
         <h1 className="text-xl font-bold text-slate-900">Health<span className="text-blue-600">Connect</span></h1>
       </div>
