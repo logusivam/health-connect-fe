@@ -20,7 +20,7 @@ export const getPatientProfile = async (req, res) => {
 // PUT /api/v1/patients/profile
 export const updatePatientProfile = async (req, res) => {
   try {
-    const { address, emergencyContactName, emergencyContactPhone, avatarBase64, phone, email, firstName, lastName } = req.body;
+    const { address, emergencyContactName, emergencyContactPhone, avatarBase64, phone, email, firstName, lastName, knownAllergies } = req.body;
     
     // 1. Update Patient Profile fields
     const profileUpdateData = {};
@@ -31,6 +31,8 @@ export const updatePatientProfile = async (req, res) => {
     // Allow updating name
     if (firstName !== undefined) profileUpdateData.firstName = firstName;
     if (lastName !== undefined) profileUpdateData.lastName = lastName;
+    // Allow updating known allergies array
+    if (knownAllergies !== undefined) profileUpdateData.knownAllergies = knownAllergies;
     
     if (avatarBase64) profileUpdateData.avatar = avatarBase64;
 
