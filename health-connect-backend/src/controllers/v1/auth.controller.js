@@ -5,6 +5,7 @@ import { sendOtpEmail } from '../../utils/email.js';
 import User from '../../models/User.js';
 import PatientProfile from '../../models/PatientProfile.js';
 import DoctorProfile from '../../models/DoctorProfile.js';
+import AdminProfile from '../../models/AdminProfile.js';
 
 // Cookie configuration
 const cookieOptions = {
@@ -37,17 +38,30 @@ export const registerUser = async (req, res) => {
       await newPatient.save();
     }
 
-    // 3. NEW: Create Doctor Profile
+    // 3. Create Doctor Profile
     if (role === 'DOCTOR') {
       const newDoctor = new DoctorProfile({
         user_id: savedUser._id,
         firstName,
         lastName,
-        registrationNumber: phone, // As requested
-        contactEmail: email,       // As requested
-        contactPhone: phone        // As requested
+        registrationNumber: phone,
+        contactEmail: email,
+        contactPhone: phone
       });
       await newDoctor.save();
+    }
+
+    // 4. NEW: Create Admin Profile
+    if (role === 'ADMIN') {
+      const newAdmin = new AdminProfile({
+        user_id: savedUser._id,
+        firstName,
+        lastName,
+        registrationNumber: phone, 
+        contactEmail: email,       
+        contactPhone: phone        
+      });
+      await newAdmin.save();
     }
 
     res.status(201).json({
