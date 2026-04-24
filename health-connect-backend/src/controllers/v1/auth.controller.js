@@ -44,19 +44,22 @@ export const registerUser = async (req, res) => {
         user_id: savedUser._id,
         firstName,
         lastName,
-        registrationNumber: phone,
-        contactEmail: email,
-        contactPhone: phone
+        registrationNumber: phone, 
+        contactEmail: email,       
+        contactPhone: phone        
       });
       await newDoctor.save();
     }
 
-    // 4. NEW: Create Admin Profile
+    // 4. UPDATED: Create Admin Profile with newly requested fields
     if (role === 'ADMIN') {
       const newAdmin = new AdminProfile({
         user_id: savedUser._id,
         firstName,
         lastName,
+        dob, // Saved
+        gender, // Saved
+        bloodGroup: bloodGroup || 'Not specified', // Saved
         registrationNumber: phone, 
         contactEmail: email,       
         contactPhone: phone        

@@ -6,12 +6,15 @@ const adminProfileSchema = new mongoose.Schema({
   user_id: { type: String, ref: 'User', required: true }, // Links to HCU ID
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
+  dob: { type: Date }, // NEW: Added DOB
+  gender: { type: String }, // NEW: Added Gender
+  bloodGroup: { type: String }, // NEW: Added Blood Group
   department: { type: String, default: '' },
   registrationNumber: { type: String }, 
   contactEmail: { type: String }, 
   contactPhone: { type: String }, 
   address: { type: String, default: '' },
-  avatar: { type: String }, 
+  avatar: { type: String }, // Added avatar field for Base64
   education: { type: String, default: '' },
   
   leave_requests: [{

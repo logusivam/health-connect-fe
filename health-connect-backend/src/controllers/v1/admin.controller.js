@@ -26,3 +26,37 @@ export const getAdminProfile = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
+
+// NEW: Update Admin Profile Handler
+export const updateAdminProfile = async (req, res) => {
+  try {
+    const { firstName, lastName, department, contactEmail, contactPhone, address, avatarBase64, education, registrationNumber } = req.body;
+    
+    let updateQuery = { $set: {} };
+    
+    if (firstName) updateQuery.$set.firstName = firstName;
+    if (lastName) updateQuery.$set.lastName = lastName;
+    if (department !== undefined) updateQuery.$set.department = department;
+    if (contactEmail !== undefined) updateQuery.$set.contactEmail = contactEmail;
+    if (contactPhone !== undefined) updateQuery.$set.contactPhone = contactPhone;
+    if (registrationNumber !== undefined) updateQuery.$set.registrationNumber = registrationNumber;
+    if (address !== undefined) updateQuery.$set.address = address;
+    if (avatarBase64) updateQuery.$set.avatar = avatarBase64;
+    if (education !== undefined) updateQuery.$set.education = education;
+
+    const profile = await AdminProfile.findOneAndUpdate(
+      { user_id: req.user.id },
+      updateQuery,
+      { new: true }
+    );
+
+    const user = await User.findById(req.user.id).select('last_login_at');
+
+    res.status(200).json({ 
+      success: true, 
+      data: { ...profile.toObject(), last_login_at: user.last_login_at } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};

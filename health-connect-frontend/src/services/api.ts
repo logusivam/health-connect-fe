@@ -62,3 +62,9 @@ export const doctorApi = {
 export const metadataApi = {
   getDepartments: () => fetchWithCookies('/metadata/departments', { method: 'GET' })
 };
+
+export const adminApi = {
+  getProfile: () => fetchWithCookies('/admins/profile', { method: 'GET' }),
+  updateProfile: (data: any) => fetchWithCookies('/admins/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  // Add other admin endpoints as needed
+};
