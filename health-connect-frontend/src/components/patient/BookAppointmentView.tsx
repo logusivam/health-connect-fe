@@ -60,23 +60,17 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     setTimeout(() => setToast(null), 4000);
   };
 
-  // --- Dynamic Real-time Linked Status Calculator ---
   const calculateStatus = (record: any, allRecords: any[]): BookedAppointment['status'] => {
-    // 1. Is this a parent Follow-up record?
     if (record.outcomeStatus === 'Follow up required') {
       const childRecord = allRecords.find(r => r.followUp_for_record_id === record._id);
       
       if (childRecord) {
-        // Did the child get seen by the doctor yet?
         if (childRecord.diagnosis && childRecord.outcomeStatus) return 'Follow up completed';
-        
-        // Still pending
         const childDate = new Date(childRecord.visitDate).setHours(0,0,0,0);
         const today = new Date().setHours(0,0,0,0);
         if (childDate >= today) return 'Appointment Booked';
         return 'Not visited';
       } else {
-        // No appointment booked yet
         if (!record.followUpDate) return 'Follow up required';
         const fDate = new Date(record.followUpDate).setHours(0,0,0,0);
         const today = new Date().setHours(0,0,0,0);
@@ -85,18 +79,15 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
       }
     }
 
-    // 2. Standard Outcomes
     if (record.outcomeStatus === 'Resolved') return 'Completed';
     if (record.outcomeStatus === 'Referred') return 'Referred';
 
-    // 3. Fallback Date-based logic for pending/new appointments
     const today = new Date().setHours(0, 0, 0, 0); 
     const apptDate = new Date(record.visitDate).setHours(0, 0, 0, 0);
 
     if (apptDate > today) return 'Upcoming';
     if (apptDate === today) return 'Ongoing';
     
-    // Past record without outcome? Marked as not visited
     if (record.diagnosis && record.outcomeStatus) return 'Completed';
     return 'Not visited';
   };
@@ -127,7 +118,6 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
           isFollowUpParent: record.outcomeStatus === 'Follow up required',
           status: calculateStatus(record, rawData)
         }));
-        // Appointments come pre-sorted latest first from backend
         setAppointments(formattedAppts);
       }
     } catch (error) {
@@ -152,6 +142,31 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     }
   }, [highlightedRecordId, appointments]);
 
+  // --- Real-time Leave/Permission Overlap Checker ---
+  const checkAvailability = (doctor: any, selectedDateStr: string) => {
+    if (!selectedDateStr || !doctor.leave_requests || doctor.leave_requests.length === 0) {
+      return { available: true };
+    }
+
+    const sStart = new Date(selectedDateStr).setHours(0, 0, 0, 0);
+    const sEnd = new Date(selectedDateStr).setHours(23, 59, 59, 999);
+
+    for (const req of doctor.leave_requests) {
+      const lStart = new Date(req.fromDate).getTime();
+      const lEnd = new Date(req.toDate).getTime();
+
+      // If the selected day overlaps with the leave/permission boundary at all
+      if (sStart <= lEnd && sEnd >= lStart) {
+        return {
+          available: false,
+          type: req.type, 
+          hours: req.hours
+        };
+      }
+    }
+    return { available: true };
+  };
+
   const filteredDoctors = doctorsList.filter(doc => {
     if (!department) return true; 
     return doc.department === department;
@@ -159,7 +174,6 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
 
   const selectedDoctorDetails = doctorsList.find(d => d._id === selectedDoctor);
 
-  // --- Start Follow-up Booking Logic ---
   const handleBookFollowUp = (appt: BookedAppointment) => {
     setIsFollowUpBooking(true);
     setFollowUpSourceId(appt.id);
@@ -190,7 +204,14 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     }
 
     if (selectedDoctorDetails) {
-      // Strict frontend validation for exact doctor + date match across ALL statuses
+      // 1. Verify the doctor isn't currently on leave for the requested date 
+      const availability = checkAvailability(selectedDoctorDetails, date);
+      if (!availability.available) {
+        showToast(`Dr. ${selectedDoctorDetails.firstName} is not available on this date due to scheduled ${availability.type.toLowerCase()}.`, "error");
+        return;
+      }
+
+      // 2. Strict frontend validation for exact doctor + date match across ALL statuses
       const isDuplicate = appointments.some(appt => 
         appt.doctorId === selectedDoctorDetails._id && 
         appt.date === date
@@ -228,10 +249,7 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
           setPaymentStep('HIDDEN');
           clearFollowUpBooking();
           
-          // Re-fetch data to automatically recalculate linked statuses accurately
           await fetchBookingData();
-          
-          // Reset pagination to see the newest record
           setActivePage(1);
           setSelectedPaymentMethod('');
         }, 2000);
@@ -246,7 +264,6 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     }
   };
 
-  // Reusable Pagination UI Renderer
   const renderPagination = (currentPage: number, totalItems: number, setPage: (page: number) => void) => {
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     if (totalPages <= 1) return null;
@@ -295,25 +312,21 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
     return <div className="text-center py-20 text-slate-500">Loading booking data...</div>;
   }
 
-  // Categorize Appointments strictly
   const activeAppointments = appointments.filter(a => !a.isFollowUpParent && (a.status === 'Upcoming' || a.status === 'Ongoing'));
   const completedAppointments = appointments.filter(a => !a.isFollowUpParent && (a.status === 'Completed' || a.status === 'Referred' || a.status === 'Not visited'));
   const followUpAppointments = appointments.filter(a => a.isFollowUpParent);
 
-  // Paginate arrays
   const paginatedActive = activeAppointments.slice((activePage - 1) * itemsPerPage, activePage * itemsPerPage);
   const paginatedFollowUp = followUpAppointments.slice((followUpPage - 1) * itemsPerPage, followUpPage * itemsPerPage);
   const paginatedCompleted = completedAppointments.slice((completedPage - 1) * itemsPerPage, completedPage * itemsPerPage);
 
-  // Dynamic Completed Columns
   const showFollowUpCol = completedAppointments.some(a => a.followUpDate);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 relative">
 
-      {/* IN-VIEWPORT TOAST NOTIFICATION */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-top-4 ${
+        <div className={`fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-top-4 ${
           toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 
           toast.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' :
           'bg-red-50 border-red-200 text-red-800'
@@ -403,34 +416,47 @@ const BookAppointmentView: React.FC<BookAppointmentViewProps> = ({ highlightedRe
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredDoctors.map(doc => (
-                <button
-                  key={doc._id}
-                  onClick={() => !isFollowUpBooking && setSelectedDoctor(doc._id)}
-                  disabled={isFollowUpBooking && selectedDoctor !== doc._id}
-                  className={`flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all duration-300 ${
-                    selectedDoctor === doc._id
-                      ? 'border-blue-600 bg-blue-50 shadow-md shadow-blue-100 scale-[1.02] ring-2 ring-blue-400 ring-offset-1'
-                      : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
-                  } ${isFollowUpBooking && selectedDoctor !== doc._id ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}
-                >
-                  {doc.avatar ? (
-                     <img src={doc.avatar} alt={doc.firstName} className="w-12 h-12 rounded-full object-cover shrink-0 border border-blue-200 group-hover:border-blue-400 transition-all" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold border border-blue-200 bg-blue-100 text-blue-700 group-hover:bg-blue-200 transition-all">
-                      {doc.firstName.charAt(0)}
-                    </div>
-                  )}
+              {filteredDoctors.map(doc => {
+                const availability = checkAvailability(doc, date);
+                // Doctor card is disabled if it's a follow-up for someone else OR if the doctor is on leave
+                const isCardDisabled = isFollowUpBooking ? (selectedDoctor !== doc._id) : (!availability.available);
 
-                  <div>
-                    <p className="font-semibold text-slate-900">Dr. {doc.firstName} {doc.lastName}</p>
-                    <p className="text-xs text-slate-500 mb-2">{doc.department || 'General'}</p>
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-green-100 text-green-700">
-                      Available
-                    </span>
-                  </div>
-                </button>
-              ))}
+                return (
+                  <button
+                    key={doc._id}
+                    onClick={() => !isFollowUpBooking && availability.available && setSelectedDoctor(doc._id)}
+                    disabled={isCardDisabled}
+                    className={`flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all duration-300 ${
+                      selectedDoctor === doc._id
+                        ? 'border-blue-600 bg-blue-50 shadow-md shadow-blue-100 scale-[1.02] ring-2 ring-blue-400 ring-offset-1'
+                        : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
+                    } ${isCardDisabled ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+                  >
+                    {doc.avatar ? (
+                       <img src={doc.avatar} alt={doc.firstName} className="w-12 h-12 rounded-full object-cover shrink-0 border border-slate-200 transition-all" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold border border-slate-200 bg-slate-100 text-slate-700 transition-all">
+                        {doc.firstName.charAt(0)}
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="font-semibold text-slate-900">Dr. {doc.firstName} {doc.lastName}</p>
+                      <p className="text-xs text-slate-500 mb-2">{doc.department || 'General'}</p>
+                      
+                      {availability.available ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-green-100 text-green-700">
+                          Available
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-red-100 text-red-700">
+                          Not Available - {availability.type === 'PERMISSION' ? `${availability.hours} hrs Permission` : 'On Leave'}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
