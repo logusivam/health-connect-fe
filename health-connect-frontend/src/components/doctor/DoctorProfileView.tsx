@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Clock, LogOut, Edit2, Save, X, AlertCircle, Calendar, CalendarCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Camera, Clock, LogOut, Edit2, Save, X, AlertCircle, CalendarCheck, ChevronLeft, ChevronRight, Edit3, Trash2 } from 'lucide-react';
 import { doctorApi, authApi, metadataApi } from '../../services/api';
 
 interface DoctorProfileViewProps {
@@ -8,7 +8,6 @@ interface DoctorProfileViewProps {
   onProfileUpdate?: (name: string, specialization: string) => void; 
 }
 
-// Phone validation rules by country code
 const COUNTRY_CODES = [
   { code: '+91', label: 'IN (+91)', minLength: 10, maxLength: 10 },
   { code: '+1', label: 'US/CA (+1)', minLength: 10, maxLength: 10 },
@@ -33,9 +32,12 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
 
   // LEAVE/PERMISSION STATES
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
-  const [leaveData, setLeaveData] = useState({ fromDate: '', toDate: '', hours: '' });
+  const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null); // NEW: Custom delete modal state
+  const [leaveData, setLeaveData] = useState({ fromDate: '', toDate: '', fromTime: '09:00', toTime: '17:00' });
   const [leaveError, setLeaveError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [toastMsg, setToastMsg] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -71,6 +73,11 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     }
   };
 
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 4000);
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,10 +96,8 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
-        
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        
         ctx.drawImage(img, 0, 0, img.width, img.height);
         const webpBase64 = canvas.toDataURL('image/webp', 0.8);
 
@@ -134,7 +139,6 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
   const handlePhoneInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const numbersOnly = e.target.value.replace(/\D/g, '');
     const rule = COUNTRY_CODES.find(c => c.code === editCountryCode);
-    
     if (rule && numbersOnly.length > rule.maxLength) {
       setEditValue(numbersOnly.slice(0, rule.maxLength));
     } else {
@@ -172,9 +176,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     let updatePayload: any = {};
     let finalValue = editValue;
 
-    if (editField === 'contactPhone') {
-      finalValue = `${editCountryCode} ${editValue}`;
-    }
+    if (editField === 'contactPhone') finalValue = `${editCountryCode} ${editValue}`;
     
     if (editField === 'name') {
       updatePayload = { firstName: editValue, lastName: editValueLast };
@@ -202,39 +204,133 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
     setValidationError('');
   };
 
+  // --- ABSENCE MANAGEMENT LOGIC ---
+
+  const getCalculatedHours = () => {
+    if (!leaveData.fromDate || !leaveData.toDate || !leaveData.fromTime || !leaveData.toTime) return 0;
+    const f = new Date(`${leaveData.fromDate}T${leaveData.fromTime}`);
+    const t = new Date(`${leaveData.toDate}T${leaveData.toTime}`);
+    const diff = (t.getTime() - f.getTime()) / (1000 * 60 * 60);
+    return diff > 0 ? Number(diff.toFixed(1)) : 0;
+  };
+
+  const pad = (n: number) => n.toString().padStart(2, '0');
+
+  const checkOverlap = (nextData: typeof leaveData) => {
+    if (!nextData.fromDate || !nextData.toDate) return false;
+    const newStart = new Date(`${nextData.fromDate}T${nextData.fromTime || '00:00'}`).getTime();
+    const newEnd = new Date(`${nextData.toDate}T${nextData.toTime || '23:59'}`).getTime();
+
+    return profile.leave_requests.some((req: any) => {
+      if (editingLeaveId && req._id === editingLeaveId) return false;
+      const existingStart = new Date(req.fromDate).getTime();
+      const existingEnd = new Date(req.toDate).getTime();
+      // Overlap occurs if New Start is before Existing End AND New End is after Existing Start
+      return (newStart < existingEnd) && (newEnd > existingStart);
+    });
+  };
+
+  const handleLeaveDataChange = (field: keyof typeof leaveData, val: string) => {
+    const nextData = { ...leaveData, [field]: val };
+    
+    // Validate overlap instantly to mimic disabled dates
+    if (checkOverlap(nextData)) {
+      showToast('The selected date/time overlaps with an existing absence request.');
+      return; 
+    }
+
+    setLeaveData(nextData);
+    setLeaveError('');
+  };
+
+  const isFutureRecord = (req: any) => {
+    const now = new Date();
+    const reqFrom = new Date(req.fromDate);
+    
+    if (req.type === 'LEAVE') {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const reqDate = new Date(reqFrom);
+      reqDate.setHours(0,0,0,0);
+      return reqDate > today; // Strictly future date
+    } else {
+      return reqFrom > now; // Strictly future time for Permission
+    }
+  };
+
+  const openEditModal = (req: any) => {
+    if (req.editCount >= 2) {
+      showToast('Edit Limit Exceeded: This request has already been modified the maximum of 2 times.');
+      return;
+    }
+
+    const fDate = new Date(req.fromDate);
+    const tDate = new Date(req.toDate);
+
+    setEditingLeaveId(req._id);
+    setLeaveData({
+      fromDate: `${fDate.getFullYear()}-${pad(fDate.getMonth()+1)}-${pad(fDate.getDate())}`,
+      toDate: `${tDate.getFullYear()}-${pad(tDate.getMonth()+1)}-${pad(tDate.getDate())}`,
+      fromTime: `${pad(fDate.getHours())}:${pad(fDate.getMinutes())}`,
+      toTime: `${pad(tDate.getHours())}:${pad(tDate.getMinutes())}`
+    });
+    setLeaveError('');
+    setIsLeaveModalOpen(true);
+  };
+
+  // Triggered when user confirms delete in custom modal
+  const executeDeleteLeave = async (id: string) => {
+    const res = await doctorApi.updateProfile({ deleteLeaveRequestId: id });
+    if (res.success) {
+      setProfile(res.data);
+      showToast('Absence record deleted securely.');
+    } else {
+      showToast('Failed to delete absence record.');
+    }
+    setDeleteConfirmId(null);
+  };
+
   const handleLeaveSubmit = async () => {
     setLeaveError('');
     if (!leaveData.fromDate || !leaveData.toDate) {
       setLeaveError('Both dates are required.');
       return;
     }
-    
-    const from = new Date(leaveData.fromDate);
-    const to = new Date(leaveData.toDate);
 
-    if (from > to) {
-      setLeaveError('To Date cannot be before From Date.');
+    const f = new Date(`${leaveData.fromDate}T${leaveData.fromTime}`);
+    const t = new Date(`${leaveData.toDate}T${leaveData.toTime}`);
+
+    if (f > t) {
+      setLeaveError('To Date/Time cannot be before From Date/Time.');
       return;
     }
 
-    const hrs = Number(leaveData.hours) || 0;
-    
-    const calculatedType = (hrs > 0 && hrs <= 2) ? 'PERMISSION' : 'LEAVE';
+    const hrs = getCalculatedHours();
+    if (hrs === 0) {
+      setLeaveError('Duration must be greater than 0 hours.');
+      return;
+    }
 
-    const payload = {
-      newLeaveRequest: {
-        fromDate: from.toISOString(),
-        toDate: to.toISOString(),
-        hours: hrs,
-        type: calculatedType
-      }
-    };
+    const calculatedType = (hrs <= 2) ? 'PERMISSION' : 'LEAVE';
+
+    let payload = {};
+    if (editingLeaveId) {
+      payload = {
+        updateLeaveRequest: { _id: editingLeaveId, fromDate: f.toISOString(), toDate: t.toISOString(), hours: hrs, type: calculatedType }
+      };
+    } else {
+      payload = {
+        newLeaveRequest: { fromDate: f.toISOString(), toDate: t.toISOString(), hours: hrs, type: calculatedType }
+      };
+    }
 
     const res = await doctorApi.updateProfile(payload);
     if (res.success) {
       setProfile(res.data);
       setIsLeaveModalOpen(false);
-      setLeaveData({ fromDate: '', toDate: '', hours: '' });
+      setEditingLeaveId(null);
+      setLeaveData({ fromDate: '', toDate: '', fromTime: '09:00', toTime: '17:00' });
+      showToast(editingLeaveId ? 'Absence updated successfully.' : 'Absence recorded successfully.');
     } else {
       setLeaveError('Failed to submit request.');
     }
@@ -244,7 +340,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
   const availableSpecializations = currentDeptObj ? currentDeptObj.specializations : [];
 
   // Pagination derived data
-  const leaveRequests = profile?.leave_requests || [];
+  const leaveRequests = profile?.leave_requests ? [...profile.leave_requests].reverse() : [];
   const totalPages = Math.ceil(leaveRequests.length / ITEMS_PER_PAGE);
   const paginatedLeaves = leaveRequests.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -256,6 +352,15 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in zoom-in-95 duration-500">
+      
+      {/* Global Toast Alert - Z-index fixed to 100 to float above modals */}
+      {toastMsg && (
+        <div className="fixed top-24 right-8 z-[100] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-10 fade-in duration-300">
+          <AlertCircle className="w-5 h-5 text-orange-400" />
+          <p className="text-sm font-medium">{toastMsg}</p>
+        </div>
+      )}
+
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-slate-900">Doctor Profile</h2>
         <p className="text-slate-500">Your professional details and credentials.</p>
@@ -314,7 +419,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
         <div className="border-t border-slate-100 p-8 bg-slate-50/50">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             
-            {/* Department (Select) */}
+            {/* Department */}
             <div className="group">
               <div className="flex items-center gap-2 mb-1">
                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">Department</p>
@@ -338,7 +443,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
               )}
             </div>
 
-            {/* Specialization (Cascading Select) */}
+            {/* Specialization */}
             <div className="group">
               <div className="flex items-center gap-2 mb-1">
                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">Specialization</p>
@@ -508,8 +613,13 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                   <input 
                     type="radio" 
                     name="absenceToggle" 
-                    checked={isLeaveModalOpen} 
-                    onChange={() => setIsLeaveModalOpen(true)} 
+                    checked={isLeaveModalOpen && !editingLeaveId} 
+                    onChange={() => {
+                      setEditingLeaveId(null);
+                      setLeaveData({fromDate: '', toDate: '', fromTime: '09:00', toTime: '17:00'});
+                      setLeaveError('');
+                      setIsLeaveModalOpen(true);
+                    }} 
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                   />
                   <span className="text-sm font-semibold text-slate-700">Request Leave/Permission</span>
@@ -525,25 +635,51 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                         <th className="px-4 py-3 font-semibold">From</th>
                         <th className="px-4 py-3 font-semibold">To</th>
                         <th className="px-4 py-3 font-semibold">Hours</th>
-                        <th className="px-4 py-3 font-semibold">Status</th>
+                        <th className="px-4 py-3 font-semibold text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {paginatedLeaves.map((req: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3">
-                            <span className={`px-2.5 py-1 text-xs font-bold rounded-md ${req.type === 'LEAVE' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
-                              {req.type}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 font-medium">{new Date(req.fromDate).toLocaleDateString()}</td>
-                          <td className="px-4 py-3 text-slate-600 font-medium">{new Date(req.toDate).toLocaleDateString()}</td>
-                          <td className="px-4 py-3 text-slate-600">{req.type === 'PERMISSION' ? `${req.hours} hrs` : '-'}</td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs font-semibold text-green-600 bg-green-50 px-2.5 py-1 rounded-md">{req.status}</span>
-                          </td>
-                        </tr>
-                      ))}
+                      {paginatedLeaves.map((req: any, idx: number) => {
+                        const canEditDelete = isFutureRecord(req);
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors group/row">
+                            <td className="px-4 py-3">
+                              <span className={`px-2.5 py-1 text-xs font-bold rounded-md ${req.type === 'LEAVE' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
+                                {req.type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 font-medium">
+                              {new Date(req.fromDate).toLocaleDateString()} <span className="text-xs text-slate-400 font-normal ml-1">{new Date(req.fromDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 font-medium">
+                              {new Date(req.toDate).toLocaleDateString()} <span className="text-xs text-slate-400 font-normal ml-1">{new Date(req.toDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 font-bold">{req.hours}</td>
+                            <td className="px-4 py-3 text-right">
+                              {canEditDelete ? (
+                                <div className="flex justify-end gap-1">
+                                  <button 
+                                    onClick={() => openEditModal(req)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md transition-colors"
+                                    title={`Edits remaining: ${2 - (req.editCount || 0)}`}
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+                                  <button 
+                                    onClick={() => setDeleteConfirmId(req._id)}
+                                    className="p-1.5 text-red-600 hover:bg-red-100 rounded-md transition-colors"
+                                    title="Delete Request"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-xs font-semibold text-slate-400">Locked</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   
@@ -619,69 +755,91 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
       {/* LEAVE/PERMISSION MODAL */}
       {isLeaveModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <CalendarCheck className="w-5 h-5 text-blue-600" />
-                Schedule Absence
+                {editingLeaveId ? 'Edit Absence Request' : 'Schedule Absence'}
               </h3>
               <button 
-                onClick={() => { setIsLeaveModalOpen(false); setLeaveError(''); setLeaveData({fromDate:'', toDate:'', hours:''}); }}
+                onClick={() => { setIsLeaveModalOpen(false); setEditingLeaveId(null); setLeaveError(''); }}
                 className="text-slate-400 hover:text-slate-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <div className="p-6 space-y-5">
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800">
-                <strong>Note:</strong> Requests up to 2 hours are recorded as "Permissions". Any request exceeding 2 hours will be automatically recorded as a full "Leave" for the selected dates.
+            <div className="p-6 space-y-6">
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800 leading-relaxed">
+                <strong>Note:</strong> A duration of <strong>2 hours or less</strong> registers automatically as a <span className="font-bold">Permission</span>. Anything exceeding that is registered as a full <span className="font-bold">Leave</span>.
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">From Date</label>
-                  <input 
-                    type="date" 
-                    min={new Date().toISOString().split('T')[0]} // Prevent past dates
-                    value={leaveData.fromDate}
-                    onChange={(e) => setLeaveData({...leaveData, fromDate: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">From Date</label>
+                    <input 
+                      type="date" 
+                      min={new Date().toISOString().split('T')[0]} 
+                      value={leaveData.fromDate}
+                      onChange={(e) => handleLeaveDataChange('fromDate', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">From Time</label>
+                    <input 
+                      type="time" 
+                      value={leaveData.fromTime}
+                      onChange={(e) => handleLeaveDataChange('fromTime', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">To Date</label>
-                  <input 
-                    type="date" 
-                    min={leaveData.fromDate || new Date().toISOString().split('T')[0]} 
-                    value={leaveData.toDate}
-                    onChange={(e) => setLeaveData({...leaveData, toDate: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">To Date</label>
+                    <input 
+                      type="date" 
+                      min={leaveData.fromDate || new Date().toISOString().split('T')[0]} 
+                      value={leaveData.toDate}
+                      onChange={(e) => handleLeaveDataChange('toDate', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">To Time</label>
+                    <input 
+                      type="time" 
+                      value={leaveData.toTime}
+                      onChange={(e) => handleLeaveDataChange('toTime', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Hours (Optional)</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Calculated Duration</label>
                 <input 
-                  type="number" 
-                  min="1"
-                  max="24"
-                  placeholder="e.g., 2"
-                  value={leaveData.hours}
-                  onChange={(e) => setLeaveData({...leaveData, hours: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  type="text" 
+                  readOnly
+                  value={getCalculatedHours() > 0 ? `${getCalculatedHours()} Hours (${getCalculatedHours() <= 2 ? 'Permission' : 'Leave'})` : '-'}
+                  className="w-full px-3 py-2 border border-slate-100 rounded-lg bg-slate-50 text-slate-600 font-semibold outline-none text-sm select-none"
                 />
               </div>
 
               {leaveError && (
-                <p className="text-red-500 text-sm font-medium">{leaveError}</p>
+                <p className="text-red-500 text-sm font-medium flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4" /> {leaveError}
+                </p>
               )}
             </div>
 
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
               <button 
-                onClick={() => { setIsLeaveModalOpen(false); setLeaveError(''); setLeaveData({fromDate:'', toDate:'', hours:''}); }}
+                onClick={() => { setIsLeaveModalOpen(false); setEditingLeaveId(null); setLeaveError(''); }}
                 className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
               >
                 Cancel
@@ -690,7 +848,38 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ avatar, onAvatarC
                 onClick={handleLeaveSubmit}
                 className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm"
               >
-                Submit Request
+                {editingLeaveId ? 'Save Changes' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM DELETE CONFIRMATION MODAL */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 text-center mt-2">
+              <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 border border-red-100">
+                <Trash2 className="w-7 h-7" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Absence Record?</h3>
+              <p className="text-sm text-slate-500 leading-relaxed px-2">
+                Are you sure you want to delete this scheduled absence? This action cannot be undone and will free up your calendar.
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 flex justify-center gap-3 border-t border-slate-100">
+              <button 
+                onClick={() => setDeleteConfirmId(null)}
+                className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => executeDeleteLeave(deleteConfirmId)}
+                className="px-5 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm"
+              >
+                Yes, Delete
               </button>
             </div>
           </div>

@@ -6,29 +6,29 @@ const doctorProfileSchema = new mongoose.Schema({
   user_id: { type: String, ref: 'User', required: true }, // Links to HCU ID
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
-  specialization: { type: String, default: '' }, // Empty initially
-  registrationNumber: { type: String }, // Mapped from phone initially
-  department: { type: String, default: '' }, // Empty initially
-  education: { type: String, default: '' }, // Empty initially
-  contactEmail: { type: String }, // Mapped from registered email
-  contactPhone: { type: String }, // Mapped from phone
+  specialization: { type: String, default: '' },
+  registrationNumber: { type: String }, 
+  department: { type: String, default: '' }, 
+  education: { type: String, default: '' }, 
+  contactEmail: { type: String }, 
+  contactPhone: { type: String }, 
   address: { type: String, default: '' },
-  avatar: { type: String }, // For base64 images
+  avatar: { type: String }, 
   
-  // NEW: Leave/Permission array (Restricted to 1 month of data via controller)
+  // UPDATED: Added editCount to track modifications
   leave_requests: [{
     fromDate: { type: Date, required: true },
     toDate: { type: Date, required: true },
     hours: { type: Number, default: 0 },
     type: { type: String, enum: ['LEAVE', 'PERMISSION'], required: true },
     status: { type: String, default: 'RECORDED' },
+    editCount: { type: Number, default: 0 }, // NEW: Max 2 edits allowed
     appliedAt: { type: Date, default: Date.now }
   }],
 
-  is_deleted: { type: Boolean, default: false } // Soft delete
+  is_deleted: { type: Boolean, default: false }
 }, { timestamps: true });
 
-// Pre-save hook for custom ID (HCDOC000001)
 doctorProfileSchema.pre('save', async function (next) {
   if (this.isNew) {
     try {

@@ -13,7 +13,6 @@ export const getDoctorProfile = async (req, res) => {
 
     if (!profile) return res.status(404).json({ success: false, message: 'Profile not found' });
 
-    // Determine the correct "Last Login" time to show in the UI
     const history = user.login_history || [];
     let previousSessionDate = null;
 
@@ -37,43 +36,50 @@ export const updateDoctorProfile = async (req, res) => {
     const { 
       firstName, lastName, specialization, department, 
       contactEmail, contactPhone, address, avatarBase64, education,
-      newLeaveRequest // NEW
+      newLeaveRequest, updateLeaveRequest, deleteLeaveRequestId
     } = req.body;
     
-    let updateQuery = { $set: {} };
-    
-    if (firstName) updateQuery.$set.firstName = firstName;
-    if (lastName) updateQuery.$set.lastName = lastName;
-    if (specialization !== undefined) updateQuery.$set.specialization = specialization;
-    if (department !== undefined) updateQuery.$set.department = department;
-    if (contactEmail !== undefined) updateQuery.$set.contactEmail = contactEmail;
-    if (contactPhone !== undefined) updateQuery.$set.contactPhone = contactPhone;
-    if (address !== undefined) updateQuery.$set.address = address;
-    if (avatarBase64) updateQuery.$set.avatar = avatarBase64;
-    if (education !== undefined) updateQuery.$set.education = education;
+    const profile = await DoctorProfile.findOne({ user_id: req.user.id });
+    if (!profile) return res.status(404).json({ success: false, message: 'Profile not found' });
 
-    // If there is a new leave request, push it to the array
+    if (firstName) profile.firstName = firstName;
+    if (lastName) profile.lastName = lastName;
+    if (specialization !== undefined) profile.specialization = specialization;
+    if (department !== undefined) profile.department = department;
+    if (contactEmail !== undefined) profile.contactEmail = contactEmail;
+    if (contactPhone !== undefined) profile.contactPhone = contactPhone;
+    if (address !== undefined) profile.address = address;
+    if (avatarBase64) profile.avatar = avatarBase64;
+    if (education !== undefined) profile.education = education;
+
+    // Create New Request
     if (newLeaveRequest) {
-      updateQuery.$push = { leave_requests: newLeaveRequest };
+      profile.leave_requests.push(newLeaveRequest);
     }
 
-    const profile = await DoctorProfile.findOneAndUpdate(
-      { user_id: req.user.id },
-      updateQuery,
-      { new: true }
-    );
+    // Edit Existing Request
+    if (updateLeaveRequest) {
+      const targetLeave = profile.leave_requests.id(updateLeaveRequest._id);
+      if (targetLeave && targetLeave.editCount < 2) {
+        targetLeave.fromDate = updateLeaveRequest.fromDate;
+        targetLeave.toDate = updateLeaveRequest.toDate;
+        targetLeave.hours = updateLeaveRequest.hours;
+        targetLeave.type = updateLeaveRequest.type;
+        targetLeave.editCount += 1;
+      }
+    }
 
-    // ONE-MONTH DATA RETENTION CLEANUP
-    // Remove any leave requests older than 30 days to keep the array lean
+    // Delete Request
+    if (deleteLeaveRequestId) {
+      profile.leave_requests.pull(deleteLeaveRequestId);
+    }
+
+    // 30-Day Cleanup Array maintenance
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const filteredLeaves = profile.leave_requests.filter(req => req.fromDate >= thirtyDaysAgo);
-    
-    if (filteredLeaves.length !== profile.leave_requests.length) {
-      profile.leave_requests = filteredLeaves;
-      await profile.save();
-    }
+    profile.leave_requests = profile.leave_requests.filter(req => req.fromDate >= thirtyDaysAgo);
+
+    await profile.save();
 
     const user = await User.findById(req.user.id).select('last_login_at');
 
