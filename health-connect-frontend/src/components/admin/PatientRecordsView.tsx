@@ -3,6 +3,14 @@ import { Search, Edit, Trash2, X, Camera, Save, AlertCircle, AlertTriangle } fro
 import { adminApi } from '../../services/api';
 import PageHeader from './PageHeader';
 
+const COUNTRY_CODES = [
+  { code: '+91', country: 'IN', lengths: [10] },
+  { code: '+1', country: 'US/CA', lengths: [10] },
+  { code: '+44', country: 'UK', lengths: [10, 11] },
+  { code: '+61', country: 'AU', lengths: [9] },
+  { code: '+971', country: 'UAE', lengths: [9] },
+];
+
 const PatientRecordsView: React.FC = () => {
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -13,6 +21,9 @@ const PatientRecordsView: React.FC = () => {
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
+  
+  // Custom Validation Error State for the form
+  const [formError, setFormError] = useState<string>('');
   
   // Double Confirmation Delete Modal State
   const [deleteState, setDeleteState] = useState<{ id: string, step: number } | null>(null);
@@ -44,23 +55,45 @@ const PatientRecordsView: React.FC = () => {
   const handleRowClick = (patient: any) => {
     setSelectedPatient(patient);
     setIsEditingMode(false);
+    setFormError('');
+  };
+
+  // Helper to split raw phone into country code and local number
+  const extractPhoneDetails = (rawPhone: string) => {
+    if (!rawPhone) return { cc: '+91', num: '' };
+    for (const c of COUNTRY_CODES) {
+      if (rawPhone.startsWith(c.code)) {
+        return { cc: c.code, num: rawPhone.substring(c.code.length).trim() };
+      }
+    }
+    return { cc: '+91', num: rawPhone.replace(/\D/g, '') };
   };
 
   const startEdit = (patient: any, e: React.MouseEvent) => {
     e.stopPropagation();
     setSelectedPatient(patient);
-    // Load existing data into form
+    setFormError('');
+
+    const phoneDetails = extractPhoneDetails(patient.phone);
+    const emgPhoneDetails = extractPhoneDetails(patient.emergencyContactPhone);
+
     setEditForm({
-      firstName: patient.firstName,
-      lastName: patient.lastName,
+      firstName: patient.firstName || '',
+      lastName: patient.lastName || '',
       email: patient.user_id?.email || '',
-      phone: patient.phone || '',
+      
+      phoneCC: phoneDetails.cc,
+      phoneNum: phoneDetails.num,
+      
       dob: patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : '',
-      gender: patient.gender || 'Other',
+      gender: patient.gender || '',
       bloodGroup: patient.bloodGroup || '',
       address: patient.address || '',
       emergencyContactName: patient.emergencyContactName || '',
-      emergencyContactPhone: patient.emergencyContactPhone || '',
+      
+      emgPhoneCC: emgPhoneDetails.cc,
+      emgPhoneNum: emgPhoneDetails.num,
+      
       knownAllergies: patient.knownAllergies?.join(', ') || '',
       department_involved: patient.department_involved?.join(', ') || '',
       avatar: patient.avatar || ''
@@ -72,6 +105,7 @@ const PatientRecordsView: React.FC = () => {
     setSelectedPatient(null);
     setIsEditingMode(false);
     setEditForm({});
+    setFormError('');
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,22 +136,79 @@ const PatientRecordsView: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const handlePhoneInput = (field: 'phoneNum' | 'emgPhoneNum', val: string, ccField: 'phoneCC' | 'emgPhoneCC') => {
+    const numbersOnly = val.replace(/\D/g, '');
+    const ccDef = COUNTRY_CODES.find(c => c.code === editForm[ccField]);
+    const maxLen = ccDef ? Math.max(...ccDef.lengths) : 15;
+    
+    if (numbersOnly.length <= maxLen) {
+      setEditForm({ ...editForm, [field]: numbersOnly });
+      setFormError('');
+    }
+  };
+
   const saveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
+
+    // --- STRICT VALIDATION ---
+    if (!editForm.firstName.trim() || !editForm.lastName.trim()) {
+      setFormError('First and Last names are required.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(editForm.email)) {
+      setFormError('Please enter a valid email address.');
+      return;
+    }
+
+    // Phone Validation
+    const phoneDef = COUNTRY_CODES.find(c => c.code === editForm.phoneCC);
+    if (phoneDef && !phoneDef.lengths.includes(editForm.phoneNum.length)) {
+      setFormError(`Primary phone must be ${phoneDef.lengths.join(' or ')} digits for ${editForm.phoneCC}.`);
+      return;
+    }
+
+    // Emergency Phone Validation (only if provided)
+    if (editForm.emgPhoneNum) {
+      const emgDef = COUNTRY_CODES.find(c => c.code === editForm.emgPhoneCC);
+      if (emgDef && !emgDef.lengths.includes(editForm.emgPhoneNum.length)) {
+        setFormError(`Emergency phone must be ${emgDef.lengths.join(' or ')} digits for ${editForm.emgPhoneCC}.`);
+        return;
+      }
+    }
+
+    if (editForm.address.length > 200) {
+      setFormError('Address cannot exceed 200 characters.');
+      return;
+    }
+
+    if (editForm.emergencyContactName.length > 50) {
+      setFormError('Emergency contact name cannot exceed 50 characters.');
+      return;
+    }
     
-    // Prepare payload. Convert comma strings back to arrays.
+    // Prepare payload
     const payload = {
       ...editForm,
+      phone: `${editForm.phoneCC} ${editForm.phoneNum}`,
+      emergencyContactPhone: editForm.emgPhoneNum ? `${editForm.emgPhoneCC} ${editForm.emgPhoneNum}` : '',
       knownAllergies: editForm.knownAllergies.split(',').map((s: string) => s.trim()).filter(Boolean),
       department_involved: editForm.department_involved.split(',').map((s: string) => s.trim()).filter(Boolean)
     };
 
+    // Clean up temporary UI fields from payload
+    delete payload.phoneCC;
+    delete payload.phoneNum;
+    delete payload.emgPhoneCC;
+    delete payload.emgPhoneNum;
+
     const res = await adminApi.updatePatient(selectedPatient._id, payload);
     if (res.success) {
-      // Update local state array to avoid refetching
       setPatients(prev => prev.map(p => p._id === selectedPatient._id ? res.data : p));
       showToast('Patient record updated successfully.');
-      setSelectedPatient(res.data); // Update open popover
+      setSelectedPatient(res.data); 
       setIsEditingMode(false);
     } else {
       showToast(res.message || 'Failed to update record.', 'error');
@@ -142,7 +233,7 @@ const PatientRecordsView: React.FC = () => {
       setPatients(prev => prev.filter(p => p._id !== deleteState.id));
       showToast('Patient securely deleted.');
       if (selectedPatient?._id === deleteState.id) {
-        cancelEdit(); // Close popover if open
+        cancelEdit(); 
       }
     } else {
       showToast('Failed to delete patient.', 'error');
@@ -241,6 +332,13 @@ const PatientRecordsView: React.FC = () => {
               <form onSubmit={saveEdit}>
                 <h3 className="text-xl font-bold text-slate-900 mb-6 border-b border-slate-100 pb-4">Edit Patient Record</h3>
                 
+                {formError && (
+                  <div className="mb-6 p-3 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 text-red-700 text-sm font-semibold">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    {formError}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-5 mb-6">
                   <div className="relative group">
                     {editForm.avatar ? (
@@ -254,55 +352,105 @@ const PatientRecordsView: React.FC = () => {
                     </label>
                   </div>
                   <div className="flex-1 flex gap-3">
-                    <input required type="text" value={editForm.firstName || ''} onChange={e => setEditForm({...editForm, firstName: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="First Name" />
-                    <input required type="text" value={editForm.lastName || ''} onChange={e => setEditForm({...editForm, lastName: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Last Name" />
+                    <input required type="text" maxLength={50} value={editForm.firstName} onChange={e => { setEditForm({...editForm, firstName: e.target.value}); setFormError(''); }} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="First Name" />
+                    <input required type="text" maxLength={50} value={editForm.lastName} onChange={e => { setEditForm({...editForm, lastName: e.target.value}); setFormError(''); }} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Last Name" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm mb-6">
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Email Address</label>
-                    <input required type="email" value={editForm.email || ''} onChange={e => setEditForm({...editForm, email: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input required type="email" value={editForm.email} onChange={e => { setEditForm({...editForm, email: e.target.value}); setFormError(''); }} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
-                  <div className="space-y-1.5">
+                  
+                  {/* Primary Phone with Country Code */}
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Phone Number</label>
-                    <input required type="text" value={editForm.phone || ''} onChange={e => setEditForm({...editForm, phone: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <div className="flex gap-2">
+                      <select
+                        value={editForm.phoneCC}
+                        onChange={(e) => {
+                          setEditForm({...editForm, phoneCC: e.target.value, phoneNum: ''});
+                          setFormError('');
+                        }}
+                        className="w-24 px-2 py-2 border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none"
+                      >
+                        {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                      </select>
+                      <input 
+                        required 
+                        type="tel" 
+                        value={editForm.phoneNum} 
+                        onChange={e => handlePhoneInput('phoneNum', e.target.value, 'phoneCC')} 
+                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                        placeholder="Number"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
+
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Date of Birth</label>
-                    <input required type="date" value={editForm.dob || ''} onChange={e => setEditForm({...editForm, dob: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input required type="date" value={editForm.dob} onChange={e => setEditForm({...editForm, dob: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
-                  <div className="space-y-1.5 grid grid-cols-2 gap-3">
+                  
+                  <div className="space-y-1.5 grid grid-cols-2 gap-3 col-span-2 sm:col-span-1">
                     <div>
                       <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Gender</label>
-                      <select value={editForm.gender || ''} onChange={e => setEditForm({...editForm, gender: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                      <select required value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="" disabled>Select</option>
                         <option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
                       </select>
                     </div>
                     <div>
                       <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Blood</label>
-                      <input required type="text" value={editForm.bloodGroup || ''} onChange={e => setEditForm({...editForm, bloodGroup: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input required type="text" maxLength={5} value={editForm.bloodGroup} onChange={e => setEditForm({...editForm, bloodGroup: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. O+" />
                     </div>
                   </div>
+                  
                   <div className="col-span-2 space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Residential Address</label>
-                    <input required type="text" value={editForm.address || ''} onChange={e => setEditForm({...editForm, address: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Residential Address</label>
+                      <span className="text-[10px] text-slate-400">{editForm.address.length}/200</span>
+                    </div>
+                    <input required type="text" maxLength={200} value={editForm.address} onChange={e => { setEditForm({...editForm, address: e.target.value}); setFormError(''); }} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
-                  <div className="space-y-1.5">
+
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Emg. Contact Name</label>
-                    <input type="text" value={editForm.emergencyContactName || ''} onChange={e => setEditForm({...editForm, emergencyContactName: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input type="text" maxLength={50} value={editForm.emergencyContactName} onChange={e => { setEditForm({...editForm, emergencyContactName: e.target.value}); setFormError(''); }} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Name" />
                   </div>
-                  <div className="space-y-1.5">
+                  
+                  {/* Emergency Phone with Country Code */}
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Emg. Contact Phone</label>
-                    <input type="text" value={editForm.emergencyContactPhone || ''} onChange={e => setEditForm({...editForm, emergencyContactPhone: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <div className="flex gap-2">
+                      <select
+                        value={editForm.emgPhoneCC}
+                        onChange={(e) => {
+                          setEditForm({...editForm, emgPhoneCC: e.target.value, emgPhoneNum: ''});
+                          setFormError('');
+                        }}
+                        className="w-24 px-2 py-2 border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none"
+                      >
+                        {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                      </select>
+                      <input 
+                        type="tel" 
+                        value={editForm.emgPhoneNum} 
+                        onChange={e => handlePhoneInput('emgPhoneNum', e.target.value, 'emgPhoneCC')} 
+                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                        placeholder="Number"
+                      />
+                    </div>
                   </div>
+
                   <div className="col-span-2 space-y-1.5">
                     <label className="text-xs font-bold text-slate-500 uppercase">Active Departments (Comma separated)</label>
-                    <input type="text" value={editForm.department_involved || ''} onChange={e => setEditForm({...editForm, department_involved: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input type="text" value={editForm.department_involved} onChange={e => setEditForm({...editForm, department_involved: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Cardiology, Neurology" />
                   </div>
                   <div className="col-span-2 space-y-1.5">
                     <label className="text-xs font-bold text-slate-500 uppercase">Known Allergies (Comma separated)</label>
-                    <input type="text" value={editForm.knownAllergies || ''} onChange={e => setEditForm({...editForm, knownAllergies: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input type="text" value={editForm.knownAllergies} onChange={e => setEditForm({...editForm, knownAllergies: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Peanuts, Penicillin" />
                   </div>
                 </div>
 
