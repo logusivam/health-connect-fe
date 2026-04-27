@@ -1,5 +1,6 @@
 import AdminProfile from '../../models/AdminProfile.js';
 import User from '../../models/User.js';
+import PatientProfile from '../../models/PatientProfile.js'; // NEW
 
 export const getAdminProfile = async (req, res) => {
   try {
@@ -87,5 +88,85 @@ export const updateAdminProfile = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// --- NEW: PATIENT MANAGEMENT BY ADMIN ---
+
+export const getAllPatients = async (req, res) => {
+  try {
+    // Populate user_id to get the email from the User collection
+    const patients = await PatientProfile.find({ is_deleted: false })
+      .populate('user_id', 'email')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, data: patients });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error fetching patients.' });
+  }
+};
+
+export const updatePatientByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      firstName, lastName, dob, gender, bloodGroup, 
+      phone, address, emergencyContactName, emergencyContactPhone, 
+      knownAllergies, department_involved, email, avatarBase64 
+    } = req.body;
+
+    const patient = await PatientProfile.findById(id);
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
+
+    // 1. Handle Email Update in the User model
+    if (email) {
+      const formattedEmail = email.toLowerCase();
+      // Check for collisions
+      const existingUser = await User.findOne({ email: formattedEmail, _id: { $ne: patient.user_id } });
+      if (existingUser) {
+        return res.status(400).json({ success: false, message: 'Email is already in use by another account.' });
+      }
+      await User.findByIdAndUpdate(patient.user_id, { email: formattedEmail });
+    }
+
+    // 2. Update Patient Profile fields
+    if (firstName) patient.firstName = firstName;
+    if (lastName) patient.lastName = lastName;
+    if (dob) patient.dob = dob;
+    if (gender) patient.gender = gender;
+    if (bloodGroup !== undefined) patient.bloodGroup = bloodGroup;
+    if (phone) patient.phone = phone;
+    if (address !== undefined) patient.address = address;
+    if (emergencyContactName !== undefined) patient.emergencyContactName = emergencyContactName;
+    if (emergencyContactPhone !== undefined) patient.emergencyContactPhone = emergencyContactPhone;
+    if (knownAllergies !== undefined) patient.knownAllergies = knownAllergies;
+    if (department_involved !== undefined) patient.department_involved = department_involved;
+    if (avatarBase64) patient.avatar = avatarBase64;
+
+    await patient.save();
+
+    // 3. Return fully populated document for immediate frontend state update
+    const updatedPatient = await PatientProfile.findById(id).populate('user_id', 'email');
+    
+    res.status(200).json({ success: true, data: updatedPatient });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server Error updating patient.' });
+  }
+};
+
+export const deletePatientByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const patient = await PatientProfile.findByIdAndUpdate(id, { is_deleted: true });
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
+
+    // Soft delete the base user account as well to prevent login
+    await User.findByIdAndUpdate(patient.user_id, { is_deleted: true, is_active: false });
+
+    res.status(200).json({ success: true, message: 'Patient record deleted securely.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error deleting patient.' });
   }
 };

@@ -66,5 +66,7 @@ export const metadataApi = {
 export const adminApi = {
   getProfile: () => fetchWithCookies('/admins/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/admins/profile', { method: 'PUT', body: JSON.stringify(data) }),
-  // Add other admin endpoints as needed
+  getAllPatients: () => fetchWithCookies('/admins/patients', { method: 'GET' }),
+  updatePatient: (id: string, data: any) => fetchWithCookies(`/admins/patients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePatient: (id: string) => fetchWithCookies(`/admins/patients/${id}`, { method: 'DELETE' }),
 };
