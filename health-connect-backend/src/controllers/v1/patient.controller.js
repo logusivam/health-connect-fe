@@ -2,6 +2,7 @@ import PatientProfile from '../../models/PatientProfile.js';
 import TreatmentRecord from '../../models/TreatmentRecord.js';
 import User from '../../models/User.js'; 
 import UnsuitableMedicine from '../../models/UnsuitableMedicine.js';
+import DoctorProfile from '../../models/DoctorProfile.js';
 
 // GET /api/v1/patients/profile
 export const getPatientProfile = async (req, res) => {
@@ -66,7 +67,7 @@ export const updatePatientProfile = async (req, res) => {
   }
 };
 
-// NEW: Book Appointment / Create Treatment Record
+// NEW: Book Appointment / Create Treatment Record 
 export const bookAppointment = async (req, res) => {
   try {
     const { doctor_id, visitDate, chiefComplaint, followUp_for_record_id } = req.body;
@@ -104,6 +105,18 @@ export const bookAppointment = async (req, res) => {
     });
 
     const savedRecord = await newRecord.save();
+
+    // NEW LOGIC: Update Patient's department_involved array
+    // Fetch the doctor's department
+    const doctorProfile = await DoctorProfile.findById(doctor_id).select('department');
+    
+    if (doctorProfile && doctorProfile.department) {
+      // $addToSet ensures the department string is only added if it doesn't already exist in the array
+      await PatientProfile.findByIdAndUpdate(
+        patientProfile._id,
+        { $addToSet: { department_involved: doctorProfile.department } }
+      );
+    }
 
     res.status(201).json({ success: true, data: savedRecord, message: 'Appointment booked successfully.' });
   } catch (error) {

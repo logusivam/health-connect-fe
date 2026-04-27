@@ -14,6 +14,7 @@ const patientProfileSchema = new mongoose.Schema({
   emergencyContactName: { type: String },
   emergencyContactPhone: { type: String },
   knownAllergies: [{ type: String }],
+  department_involved: [{ type: String }],  // NEW: To track departments the patient has interacted with
   avatar: { type: String }, // ADDED: Required to save the base64 image
   is_deleted: { type: Boolean, default: false } // Soft delete
 }, { timestamps: true });
