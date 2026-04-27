@@ -14,6 +14,9 @@ const doctorProfileSchema = new mongoose.Schema({
   contactPhone: { type: String }, 
   address: { type: String, default: '' },
   avatar: { type: String }, 
+  total_treated: { type: Number, default: 0 },
+  total_flags: { type: Number, default: 0 },
+  
   
   // UPDATED: Added editCount to track modifications
   leave_requests: [{
