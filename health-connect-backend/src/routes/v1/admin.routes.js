@@ -2,7 +2,8 @@ import express from 'express';
 import { getAdminProfile, updateAdminProfile, getAllPatients,
     updatePatientByAdmin, deletePatientByAdmin, getAllDoctors,
     updateDoctorByAdmin, deleteDoctorByAdmin, getAllUsers,
-    updateUserStatus, deleteUser
+    updateUserStatus, deleteUser, getAllFlags,
+    updateFlagByAdmin, deleteFlagByAdmin
  } from '../../controllers/v1/admin.controller.js';
 import { protect } from '../../middlewares/auth.middleware.js';
 
@@ -26,5 +27,10 @@ router.delete('/doctors/:id', protect, deleteDoctorByAdmin);
 router.get('/users', getAllUsers);
 router.put('/users/:id/status', updateUserStatus);
 router.delete('/users/:id', deleteUser);
+
+// Unsuitable Medicine Management Routes
+router.get('/flags', getAllFlags);
+router.put('/flags/:id', updateFlagByAdmin);
+router.delete('/flags/:id', deleteFlagByAdmin);
 
 export default router;

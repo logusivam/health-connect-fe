@@ -2,6 +2,7 @@ import AdminProfile from '../../models/AdminProfile.js';
 import User from '../../models/User.js';
 import PatientProfile from '../../models/PatientProfile.js';
 import DoctorProfile from '../../models/DoctorProfile.js';
+import UnsuitableMedicine from '../../models/UnsuitableMedicine.js';
 
 export const getAdminProfile = async (req, res) => {
   try {
@@ -324,5 +325,78 @@ export const deleteUser = async (req, res) => {
   } catch (error) {
     console.error('Delete User Error:', error);
     res.status(500).json({ success: false, message: 'Server Error deleting user.' });
+  }
+};
+
+// --- UNSUITABLE MEDICINE MANAGEMENT ---
+
+export const getAllFlags = async (req, res) => {
+  try {
+    // Fetch only active flags marked as 'Unsuit'
+    const flags = await UnsuitableMedicine.find({ flag_type: 'Unsuit', is_deleted: false })
+      .populate('patient_id', 'firstName lastName _id')
+      .populate('flagged_by_doctor_id', 'firstName lastName _id')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, data: flags });
+  } catch (error) {
+    console.error("Error fetching flags:", error);
+    res.status(500).json({ success: false, message: 'Server Error fetching medical flags.' });
+  }
+};
+
+export const updateFlagByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { flag_type, severity } = req.body;
+
+    const flag = await UnsuitableMedicine.findById(id);
+    if (!flag) return res.status(404).json({ success: false, message: 'Flag not found' });
+
+    // Handle Audit Trail logic if changing from Unsuit -> Suit
+    if (flag_type === 'Suit' && flag.flag_type === 'Unsuit') {
+      flag.is_active = false;
+      flag.removed_by_user_id = req.user?.id; 
+      flag.removed_at = new Date();
+    } else if (flag_type === 'Unsuit') {
+      flag.is_active = true;
+      flag.removed_by_user_id = null;
+      flag.removed_at = null;
+    }
+
+    if (flag_type) flag.flag_type = flag_type;
+    if (severity) flag.severity = severity;
+
+    await flag.save();
+
+    // Re-populate to send back complete data for frontend state update
+    const updatedFlag = await UnsuitableMedicine.findById(id)
+      .populate('patient_id', 'firstName lastName _id')
+      .populate('flagged_by_doctor_id', 'firstName lastName _id');
+
+    res.status(200).json({ success: true, data: updatedFlag });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server Error updating flag.' });
+  }
+};
+
+export const deleteFlagByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Soft delete the flag
+    const flag = await UnsuitableMedicine.findByIdAndUpdate(
+      id, 
+      { is_deleted: true, is_active: false }, 
+      { new: true }
+    );
+    
+    if (!flag) return res.status(404).json({ success: false, message: 'Flag not found' });
+
+    res.status(200).json({ success: true, message: 'Medication flag securely deleted.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server Error deleting flag.' });
   }
 };

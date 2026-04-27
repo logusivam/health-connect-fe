@@ -79,4 +79,8 @@ export const adminApi = {
   getAllUsers: () => fetchWithCookies('/admins/users', { method: 'GET' }),
   updateUserStatus: (id: string, is_active: boolean) => fetchWithCookies(`/admins/users/${id}/status`, { method: 'PUT', body: JSON.stringify({ is_active }) }),
   deleteUser: (id: string) => fetchWithCookies(`/admins/users/${id}`, { method: 'DELETE' }),
+  // Flags
+  getAllFlags: () => fetchWithCookies('/admins/flags', { method: 'GET' }),
+  updateFlag: (id: string, data: any) => fetchWithCookies(`/admins/flags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteFlag: (id: string) => fetchWithCookies(`/admins/flags/${id}`, { method: 'DELETE' }),
 };

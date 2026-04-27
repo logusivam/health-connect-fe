@@ -12,16 +12,17 @@ const unsuitableMedicineSchema = new mongoose.Schema({
   flag_type: { type: String, enum: ['Unsuit', 'Suit'], required: true },
   is_active: { type: Boolean, default: true },
   removed_by_user_id: { type: String, ref: 'User' }, 
-  removed_at: { type: Date } 
+  removed_at: { type: Date },
+  is_deleted: { type: Boolean, default: false } // NEW: Added for soft deletion
 }, { timestamps: true });
 
-// --- NEW: Real-time Stat Calculator ---
-// This function counts all documents for a specific doctor where flag_type is 'Unsuit'
+// --- Real-time Stat Calculator ---
 unsuitableMedicineSchema.statics.calculateTotalFlags = async function (doctorId) {
   try {
     const totalUnsuitFlags = await this.countDocuments({
       flagged_by_doctor_id: doctorId,
-      flag_type: 'Unsuit'
+      flag_type: 'Unsuit',
+      is_deleted: false
     });
 
     await mongoose.model('DoctorProfile').findByIdAndUpdate(
@@ -33,12 +34,10 @@ unsuitableMedicineSchema.statics.calculateTotalFlags = async function (doctorId)
   }
 };
 
-// Hook: Runs after a new flag is saved
 unsuitableMedicineSchema.post('save', function () {
   this.constructor.calculateTotalFlags(this.flagged_by_doctor_id);
 });
 
-// Hook: Runs after a flag is updated (e.g., changed from Unsuit to Suit)
 unsuitableMedicineSchema.post('findOneAndUpdate', async function (doc) {
   if (doc) {
     await doc.constructor.calculateTotalFlags(doc.flagged_by_doctor_id);
