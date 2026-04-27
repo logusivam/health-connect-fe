@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Edit, Trash2, X, Camera, Save, AlertCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
-import { adminApi } from '../../services/api';
+import { adminApi, metadataApi } from '../../services/api';
 import PageHeader from './PageHeader';
 
 const COUNTRY_CODES = [
@@ -13,6 +13,7 @@ const COUNTRY_CODES = [
 
 const DoctorRecordsView: React.FC = () => {
   const [doctors, setDoctors] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]); // NEW: Metadata state
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [toastMsg, setToastMsg] = useState<{msg: string, type: 'success'|'error'|'warning'} | null>(null);
@@ -29,15 +30,20 @@ const DoctorRecordsView: React.FC = () => {
   const [deleteState, setDeleteState] = useState<{ id: string, step: number } | null>(null);
 
   useEffect(() => {
-    fetchDoctors();
+    fetchData();
   }, []);
 
-  const fetchDoctors = async () => {
+  const fetchData = async () => {
     setIsLoading(true);
-    const res = await adminApi.getAllDoctors();
-    if (res.success) {
-      setDoctors(res.data);
-    }
+    // Fetch doctors and departments concurrently
+    const [docsRes, deptsRes] = await Promise.all([
+      adminApi.getAllDoctors(),
+      metadataApi.getDepartments()
+    ]);
+    
+    if (docsRes.success) setDoctors(docsRes.data);
+    if (deptsRes.success) setDepartments(deptsRes.data);
+    
     setIsLoading(false);
   };
 
@@ -101,9 +107,9 @@ const DoctorRecordsView: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const MAX_SIZE = 4 * 1024 * 1024;
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB Limit
     if (file.size > MAX_SIZE) {
-      showToast('Image is too large. Must be less than 4MB.', 'error');
+      showToast('Image is too large. Must be less than 5MB.', 'error');
       return;
     }
 
@@ -159,6 +165,12 @@ const DoctorRecordsView: React.FC = () => {
 
     if (editForm.address.length > 200) {
       setFormError('Address cannot exceed 200 characters.');
+      return;
+    }
+
+    // Require both Department and Specialization
+    if (!editForm.department || !editForm.specialization) {
+      setFormError('Both Department and Specialization must be selected.');
       return;
     }
     
@@ -227,6 +239,10 @@ const DoctorRecordsView: React.FC = () => {
     const loginDate = history.length > 1 ? history[history.length - 2].logged_in_at : history[0].logged_in_at;
     return new Date(loginDate).toLocaleString();
   };
+
+  // Derive available specializations for the currently selected department
+  const selectedDeptObj = departments.find(d => d.name === editForm.department);
+  const availableSpecializations = selectedDeptObj ? selectedDeptObj.specializations : [];
 
   if (isLoading) return <div className="text-center py-20 text-slate-500">Loading doctor records...</div>;
 
@@ -344,13 +360,40 @@ const DoctorRecordsView: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm mb-6">
-                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Specialization</label>
-                    <input type="text" value={editForm.specialization} onChange={e => setEditForm({...editForm, specialization: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" />
-                  </div>
+                  {/* Department and Specialization using DB MetaData */}
                   <div className="space-y-1.5 col-span-2 sm:col-span-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Department</label>
-                    <input type="text" value={editForm.department} onChange={e => setEditForm({...editForm, department: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" />
+                    <select 
+                      required 
+                      value={editForm.department} 
+                      onChange={e => setEditForm({...editForm, department: e.target.value, specialization: ''})} 
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+                    >
+                      <option value="" disabled>Select Department</option>
+                      {departments.map((dept: any) => (
+                        <option key={dept._id} value={dept.name}>{dept.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Specialization</label>
+                    {editForm.department ? (
+                      <select 
+                        required 
+                        value={editForm.specialization} 
+                        onChange={e => setEditForm({...editForm, specialization: e.target.value})} 
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+                      >
+                        <option value="" disabled>Select Specialization</option>
+                        {availableSpecializations.map((spec: string) => (
+                          <option key={spec} value={spec}>{spec}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="w-full px-3 py-2 border border-red-200 bg-red-50 rounded-lg text-red-600 flex items-center">
+                        Select Department First
+                      </div>
+                    )}
                   </div>
                   
                   <div className="space-y-1.5 col-span-2 sm:col-span-1">
