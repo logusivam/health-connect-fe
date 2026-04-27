@@ -235,3 +235,94 @@ export const deleteDoctorByAdmin = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server Error deleting doctor.' });
   }
 };
+
+// --- USER ACCOUNT MANAGEMENT BY ADMIN ---
+
+export const getAllUsers = async (req, res) => {
+  try {
+    // 1. Fetch all active base users
+    const users = await User.find({ is_deleted: false }).select('-password').sort({ createdAt: -1 }).lean();
+
+    // 2. Fetch all profiles in parallel to avoid N+1 query performance issues
+    const [patients, doctors, admins] = await Promise.all([
+      PatientProfile.find({ is_deleted: false }).select('user_id firstName lastName').lean(),
+      DoctorProfile.find({ is_deleted: false }).select('user_id firstName lastName').lean(),
+      AdminProfile.find({ is_deleted: false }).select('user_id firstName lastName').lean()
+    ]);
+
+    // 3. Create a quick lookup map: { "HCU0001": "John Doe" }
+    const nameMap = {};
+    patients.forEach(p => { if (p.user_id) nameMap[p.user_id.toString()] = `${p.firstName} ${p.lastName}`; });
+    doctors.forEach(d => { if (d.user_id) nameMap[d.user_id.toString()] = `${d.firstName} ${d.lastName}`; });
+    admins.forEach(a => { if (a.user_id) nameMap[a.user_id.toString()] = `${a.firstName} ${a.lastName}`; });
+
+    // 4. Attach names to the user array
+    const mappedUsers = users.map(u => ({
+      id: u._id,
+      email: u.email,
+      role: u.role,
+      isActive: u.is_active,
+      createdOn: u.createdAt,
+      name: nameMap[u._id.toString()] || 'Unknown User'
+    }));
+
+    res.status(200).json({ success: true, data: mappedUsers });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({ success: false, message: 'Server Error fetching users.' });
+  }
+};
+
+export const updateUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    // Safely check if the user is trying to suspend themselves
+    if (req.user && req.user.id === id && !is_active) {
+      return res.status(400).json({ success: false, message: 'You cannot suspend your own active session.' });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { _id: id }, 
+      { $set: { is_active: is_active } }, 
+      { new: true }
+    );
+    
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    res.status(200).json({ 
+      success: true, 
+      message: `User account ${is_active ? 'activated' : 'suspended'} successfully.`,
+      data: { isActive: user.is_active }
+    });
+  } catch (error) {
+    console.error('Update User Status Error:', error); 
+    res.status(500).json({ success: false, message: 'Server Error updating user status.' });
+  }
+};
+
+// UPDATED: Added Optional Chaining (req.user?.id) to prevent TypeError
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Safely check if the user is trying to delete themselves
+    if (req.user && req.user.id === id) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { _id: id }, 
+      { $set: { is_deleted: true, is_active: false } }, 
+      { new: true }
+    );
+
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    res.status(200).json({ success: true, message: 'User account securely deleted.' });
+  } catch (error) {
+    console.error('Delete User Error:', error);
+    res.status(500).json({ success: false, message: 'Server Error deleting user.' });
+  }
+};
