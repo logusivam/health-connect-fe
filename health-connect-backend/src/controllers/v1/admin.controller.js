@@ -1,6 +1,7 @@
 import AdminProfile from '../../models/AdminProfile.js';
 import User from '../../models/User.js';
-import PatientProfile from '../../models/PatientProfile.js'; // NEW
+import PatientProfile from '../../models/PatientProfile.js';
+import DoctorProfile from '../../models/DoctorProfile.js';
 
 export const getAdminProfile = async (req, res) => {
   try {
@@ -168,5 +169,69 @@ export const deletePatientByAdmin = async (req, res) => {
     res.status(200).json({ success: true, message: 'Patient record deleted securely.' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error deleting patient.' });
+  }
+};
+
+// --- DOCTOR MANAGEMENT BY ADMIN ---
+
+export const getAllDoctors = async (req, res) => {
+  try {
+    // Populate user_id to get the login_history from the User collection
+    const doctors = await DoctorProfile.find({ is_deleted: false })
+      .populate('user_id', 'login_history')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, data: doctors });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error fetching doctors.' });
+  }
+};
+
+export const updateDoctorByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      firstName, lastName, specialization, department, 
+      contactEmail, contactPhone, address, avatarBase64 
+    } = req.body;
+
+    const doctor = await DoctorProfile.findById(id);
+    if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found' });
+
+    // Update Doctor Profile fields
+    if (firstName) doctor.firstName = firstName;
+    if (lastName) doctor.lastName = lastName;
+    if (specialization !== undefined) doctor.specialization = specialization;
+    if (department !== undefined) doctor.department = department;
+    if (contactEmail !== undefined) doctor.contactEmail = contactEmail;
+    if (contactPhone !== undefined) doctor.contactPhone = contactPhone;
+    if (address !== undefined) doctor.address = address;
+    if (avatarBase64) doctor.avatar = avatarBase64;
+
+    await doctor.save();
+
+    // Return fully populated document for immediate frontend state update
+    const updatedDoctor = await DoctorProfile.findById(id).populate('user_id', 'login_history');
+    
+    res.status(200).json({ success: true, data: updatedDoctor });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server Error updating doctor.' });
+  }
+};
+
+export const deleteDoctorByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const doctor = await DoctorProfile.findByIdAndUpdate(id, { is_deleted: true });
+    if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found' });
+
+    // Soft delete the base user account as well to prevent login
+    await User.findByIdAndUpdate(doctor.user_id, { is_deleted: true, is_active: false });
+
+    res.status(200).json({ success: true, message: 'Doctor record deleted securely.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error deleting doctor.' });
   }
 };

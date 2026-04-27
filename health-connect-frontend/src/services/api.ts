@@ -64,9 +64,15 @@ export const metadataApi = {
 };
 
 export const adminApi = {
+  // Admin Profile
   getProfile: () => fetchWithCookies('/admins/profile', { method: 'GET' }),
   updateProfile: (data: any) => fetchWithCookies('/admins/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  // Patient Management
   getAllPatients: () => fetchWithCookies('/admins/patients', { method: 'GET' }),
   updatePatient: (id: string, data: any) => fetchWithCookies(`/admins/patients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePatient: (id: string) => fetchWithCookies(`/admins/patients/${id}`, { method: 'DELETE' }),
+  // Doctor Management
+  getAllDoctors: () => fetchWithCookies('/admins/doctors', { method: 'GET' }),
+  updateDoctor: (id: string, data: any) => fetchWithCookies(`/admins/doctors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDoctor: (id: string) => fetchWithCookies(`/admins/doctors/${id}`, { method: 'DELETE' }),
 };
