@@ -147,6 +147,20 @@ const PatientRecordsView: React.FC = () => {
     }
   };
 
+  // NEW: Custom handler for Blood Group (Auto Uppercase, Unicode Superscript, Max 3 chars)
+  const handleBloodGroupChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.toUpperCase();
+    
+    // Replace standard + and - with their unicode superscript equivalents
+    val = val.replace(/\+/g, '⁺').replace(/-/g, '⁻');
+    
+    // Strict 3 character cap
+    if (val.length <= 3) {
+      setEditForm({ ...editForm, bloodGroup: val });
+      setFormError('');
+    }
+  };
+
   const saveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -403,7 +417,15 @@ const PatientRecordsView: React.FC = () => {
                     </div>
                     <div>
                       <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Blood</label>
-                      <input required type="text" maxLength={5} value={editForm.bloodGroup} onChange={e => setEditForm({...editForm, bloodGroup: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. O+" />
+                      {/* UPDATED: Blood Group input with auto-formatting logic */}
+                      <input 
+                        required 
+                        type="text" 
+                        value={editForm.bloodGroup} 
+                        onChange={handleBloodGroupChange} 
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                        placeholder="e.g. O⁺" 
+                      />
                     </div>
                   </div>
                   
