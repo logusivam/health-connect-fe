@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Users, Stethoscope, AlertTriangle, UserCog, Activity, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import favicon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/admin.types';
-import { mockAdmin } from '../../data/mockAdminData';
+import { adminApi } from '../../services/api';
 
 import AdminProfileView from '../../components/admin/AdminProfileView';
 import PatientRecordsView from '../../components/admin/PatientRecordsView';
@@ -21,7 +21,27 @@ export default function AdminDashboard() {
   const activeView = (urlPath ? urlPath.toUpperCase() : 'PATIENT_RECORDS') as ViewState;
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [adminAvatar, setAdminAvatar] = useState<string | undefined>(mockAdmin.avatar);
+  
+  // Global Admin State for the Dashboard
+  const [adminProfile, setAdminProfile] = useState<any>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch profile once at the dashboard level to share across components
+    const fetchProfile = async () => {
+      try {
+        const res = await adminApi.getProfile();
+        if (res.success) {
+          setAdminProfile(res.data);
+        }
+      } catch (error) {
+        console.error("Failed to load admin profile");
+      } finally {
+        setIsProfileLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
 
   const navItems = [
     { id: 'PATIENT_RECORDS', label: 'Patient Records', icon: Users },
@@ -107,14 +127,20 @@ export default function AdminDashboard() {
 
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-slate-900">{mockAdmin.name}</p>
-              <p className="text-xs text-blue-600 font-bold uppercase tracking-wider">Super Admin</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {isProfileLoading ? 'Loading...' : `${adminProfile?.firstName || ''} ${adminProfile?.lastName || ''}`}
+              </p>
+              <p className="text-xs text-blue-600 font-bold uppercase tracking-wider">Admin</p>
             </div>
             <div 
               className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-200 text-slate-700 font-bold overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all" 
               onClick={() => handleNavigate('PROFILE')}
             >
-              {adminAvatar ? <img src={adminAvatar} alt="Admin" className="w-full h-full object-cover" /> : mockAdmin.name.charAt(0)}
+              {adminProfile?.avatar ? (
+                <img src={adminProfile.avatar} alt="Admin" className="w-full h-full object-cover" />
+              ) : (
+                isProfileLoading ? 'A' : (adminProfile?.firstName?.charAt(0) || 'A')
+              )}
             </div>
           </div>
         </header>
@@ -137,7 +163,13 @@ export default function AdminDashboard() {
 
         <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto bg-slate-50/50">
           <div key={activeView}>
-            {activeView === 'PROFILE' && <AdminProfileView avatar={adminAvatar} onAvatarChange={setAdminAvatar} />}
+            {activeView === 'PROFILE' && (
+              <AdminProfileView 
+                profile={adminProfile} 
+                isLoading={isProfileLoading} 
+                onProfileUpdate={setAdminProfile} 
+              />
+            )}
             {activeView === 'PATIENT_RECORDS' && <PatientRecordsView />}
             {activeView === 'DOCTOR_RECORDS' && <DoctorRecordsView />}
             {activeView === 'UNSUITABLE_MEDICINE' && <UnsuitableMedicineAdminView />}

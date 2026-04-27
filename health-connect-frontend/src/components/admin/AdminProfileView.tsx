@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Camera, ShieldCheck, LogOut, Edit2, Save, X, AlertCircle, CalendarCheck, ChevronLeft, ChevronRight, Edit3, Trash2 } from 'lucide-react';
 import { adminApi, authApi } from '../../services/api';
 import PageHeader from './PageHeader';
 
 interface AdminProfileViewProps {
-  avatar?: string;
-  onAvatarChange: (url: string) => void;
+  profile: any;
+  isLoading: boolean;
+  onProfileUpdate: (updatedProfile: any) => void;
 }
 
 const COUNTRY_CODES = [
@@ -17,10 +18,7 @@ const COUNTRY_CODES = [
 
 const ITEMS_PER_PAGE = 5;
 
-const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarChange }) => {
-  const [profile, setProfile] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
+const AdminProfileView: React.FC<AdminProfileViewProps> = ({ profile, isLoading, onProfileUpdate }) => {
   // Edit States
   const [editField, setEditField] = useState<'name' | 'department' | 'contactEmail' | 'contactPhone' | 'address' | 'education' | 'registrationNumber' | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -37,24 +35,6 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
   const [leaveError, setLeaveError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [toastMsg, setToastMsg] = useState('');
-
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
-  const fetchProfile = async () => {
-    try {
-      const res = await adminApi.getProfile();
-      if (res.success) {
-        setProfile(res.data);
-        if (res.data.avatar) onAvatarChange(res.data.avatar);
-      }
-    } catch (error) {
-      console.error("Failed to fetch admin profile");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -84,10 +64,13 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
         ctx.drawImage(img, 0, 0, img.width, img.height);
         const webpBase64 = canvas.toDataURL('image/webp', 0.8);
 
-        onAvatarChange(webpBase64);
-        setProfile((prev: any) => ({ ...prev, avatar: webpBase64 }));
-        
-        await adminApi.updateProfile({ avatarBase64: webpBase64 });
+        const res = await adminApi.updateProfile({ avatarBase64: webpBase64 });
+        if (res.success) {
+          onProfileUpdate(res.data);
+          showToast('Profile picture updated successfully.');
+        } else {
+          showToast('Failed to update profile picture.');
+        }
       };
       img.src = event.target?.result as string;
     };
@@ -160,18 +143,16 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
     
     if (editField === 'name') {
       updatePayload = { firstName: editValue, lastName: editValueLast };
-      setProfile((prev: any) => ({ ...prev, firstName: editValue, lastName: editValueLast }));
     } else {
       updatePayload = { [editField]: finalValue };
-      setProfile((prev: any) => ({ ...prev, [editField]: finalValue }));
     }
 
     const res = await adminApi.updateProfile(updatePayload);
-    if (!res.success) {
-      showToast("Failed to update field.");
-      fetchProfile(); 
-    } else {
+    if (res.success) {
+      onProfileUpdate(res.data);
       showToast("Profile updated successfully.");
+    } else {
+      showToast("Failed to update field.");
     }
     
     setEditField(null);
@@ -195,7 +176,7 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
     const newStart = new Date(`${nextData.fromDate}T${nextData.fromTime || '00:00'}`).getTime();
     const newEnd = new Date(`${nextData.toDate}T${nextData.toTime || '23:59'}`).getTime();
 
-    return profile.leave_requests.some((req: any) => {
+    return profile.leave_requests?.some((req: any) => {
       if (editingLeaveId && req._id === editingLeaveId) return false;
       const existingStart = new Date(req.fromDate).getTime();
       const existingEnd = new Date(req.toDate).getTime();
@@ -253,7 +234,7 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
   const executeDeleteLeave = async (id: string) => {
     const res = await adminApi.updateProfile({ deleteLeaveRequestId: id });
     if (res.success) {
-      setProfile(res.data);
+      onProfileUpdate(res.data);
       showToast('Absence record deleted securely.');
     } else {
       showToast('Failed to delete absence record.');
@@ -297,7 +278,7 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
 
     const res = await adminApi.updateProfile(payload);
     if (res.success) {
-      setProfile(res.data);
+      onProfileUpdate(res.data);
       setIsLeaveModalOpen(false);
       setEditingLeaveId(null);
       setLeaveData({ fromDate: '', toDate: '', fromTime: '09:00', toTime: '17:00' });
@@ -338,8 +319,8 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
           <div className="flex flex-col items-center">
             <div className="relative group w-32 h-32 rounded-full bg-white p-1.5 shadow-xl mb-4">
               <div className="w-full h-full rounded-full overflow-hidden relative">
-                 {profile.avatar || avatar ? (
-                    <img src={profile.avatar || avatar} alt="Admin" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                 {profile.avatar ? (
+                    <img src={profile.avatar} alt="Admin" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   ) : (
                     <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-700 font-bold text-4xl transition-transform duration-300 group-hover:scale-105">
                       {profile.firstName.charAt(0)}
@@ -460,7 +441,7 @@ const AdminProfileView: React.FC<AdminProfileViewProps> = ({ avatar, onAvatarCha
                       {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
                     </select>
                     <input 
-                      type="tel" 
+                      type="text" 
                       placeholder="Phone Number"
                       value={editValue} 
                       onChange={handlePhoneInputChange} 
