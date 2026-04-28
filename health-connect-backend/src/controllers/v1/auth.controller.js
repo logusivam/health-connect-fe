@@ -15,9 +15,23 @@ const cookieOptions = {
   path: '/'
 };
 
+// Helper function to check if the request is originating from localhost
+const isLocalhost = (req) => {
+  const host = req.hostname || req.ip;
+  return host === 'localhost' || host === 'localhost:5173' || host === '::1';
+};
+
 export const registerUser = async (req, res) => {
   try {
     const { email, password, role, firstName, lastName, dob, gender, phone, bloodGroup } = req.body;
+
+    // STRICT ADMIN VALIDATION: Only allow Admin registration from localhost
+    if (role === 'ADMIN' && !isLocalhost(req)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin registration is restricted to secure local environments.' 
+      });
+    }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -84,6 +98,14 @@ export const loginUser = async (req, res) => {
   try {
     const { email, password, role, otp } = req.body;
 
+    // STRICT ADMIN VALIDATION: Only allow Admin login from localhost
+    if (role === 'ADMIN' && !isLocalhost(req)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin authentication is restricted to secure local environments.' 
+      });
+    }
+
     const user = await User.findOne({ email: email.toLowerCase(), role, is_deleted: false });
     
     if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials or role.' });
@@ -108,7 +130,7 @@ export const loginUser = async (req, res) => {
       const otpRecord = await Otp.findOne({ email: email.toLowerCase(), otp });
       
       if (!otpRecord) {
-        await handleFailedAttempt(user, req); // Passed req for audit context
+        await handleFailedAttempt(user, req); 
         return res.status(400).json({ success: false, message: 'Wrong or expired OTP.' });
       }
       
@@ -117,7 +139,7 @@ export const loginUser = async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      await handleFailedAttempt(user, req); // Passed req for audit context
+      await handleFailedAttempt(user, req); 
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
