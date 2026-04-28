@@ -15,9 +15,15 @@ export default function AppRouter() {
   const [userRole, setUserRole] = useState<Role | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Check auth status via cookies on initial load
+  // Check auth status via cookies on initial load and listen for expirations
   useEffect(() => {
     const checkSession = async () => {
+      // Skip the API check entirely if on the landing page
+      if (window.location.pathname === '/') {
+        setIsInitializing(false);
+        return;
+      }
+
       try {
         const res = await authApi.getMe();
         if (res.success) {
@@ -30,8 +36,27 @@ export default function AppRouter() {
         setIsInitializing(false);
       }
     };
+    
     checkSession();
-  }, []);
+
+    // --- NEW: Global Session Expiration Listener ---
+    const handleSessionExpired = () => {
+      // 1. Instantly wipe local auth state
+      setIsAuthenticated(false);
+      setUserRole(null);
+      
+      // 2. Only force navigation if they are currently inside a protected dashboard area
+      const publicPaths = ['/', '/login', '/register', '/forgot-password'];
+      if (!publicPaths.includes(window.location.pathname)) {
+        navigate('/login', { replace: true });
+      }
+    };
+
+    window.addEventListener('session-expired', handleSessionExpired);
+    
+    // Cleanup listener on unmount
+    return () => window.removeEventListener('session-expired', handleSessionExpired);
+  }, [navigate]);
 
   const handleLogin = (role: string) => {
     const validRole = role as Role;
@@ -43,12 +68,16 @@ export default function AppRouter() {
     if (validRole === 'ADMIN') navigate('/admin/patient_records');
   };
 
-  // Show a loading screen while checking the session cookie
-  if (isInitializing) {
+  // Determine if we are currently loading the Home Page
+  const isHomePage = window.location.pathname === '/';
+
+  // Show a loading screen while checking the session cookie, EXCEPT on the home page.
+  // The home page has its own heavy 3D loader, so we let it render immediately.
+  if (isInitializing && !isHomePage) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <img src={favIcon} alt="HealthConnect Logo" className='w-12 h-12 ' />
-        <p className="text-slate-500 font-medium">Securing session...</p>
+        <img src={favIcon} alt="HealthConnect Logo" className='w-12 h-12 animate-pulse' />
+        <p className="text-slate-500 font-medium mt-4">Securing session...</p>
       </div>
     );
   }

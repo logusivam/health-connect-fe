@@ -7,6 +7,13 @@ const fetchWithCookies = async (endpoint: string, options: RequestInit = {}) => 
     headers: { 'Content-Type': 'application/json', ...options.headers },
     credentials: 'include', // CRITICAL: This sends the httpOnly cookies
   });
+
+  // --- NEW: Global 401 Interceptor ---
+  // If the backend says the token is invalid/expired, broadcast it to the app.
+  if (res.status === 401) {
+    window.dispatchEvent(new Event('session-expired'));
+  }
+  
   return res.json();
 };
 
@@ -54,4 +61,28 @@ export const doctorApi = {
 // ADDED: New API group for metadata
 export const metadataApi = {
   getDepartments: () => fetchWithCookies('/metadata/departments', { method: 'GET' })
+};
+
+export const adminApi = {
+  // Admin Profile
+  getProfile: () => fetchWithCookies('/admins/profile', { method: 'GET' }),
+  updateProfile: (data: any) => fetchWithCookies('/admins/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  // Patient Management
+  getAllPatients: () => fetchWithCookies('/admins/patients', { method: 'GET' }),
+  updatePatient: (id: string, data: any) => fetchWithCookies(`/admins/patients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePatient: (id: string) => fetchWithCookies(`/admins/patients/${id}`, { method: 'DELETE' }),
+  // Doctor Management
+  getAllDoctors: () => fetchWithCookies('/admins/doctors', { method: 'GET' }),
+  updateDoctor: (id: string, data: any) => fetchWithCookies(`/admins/doctors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDoctor: (id: string) => fetchWithCookies(`/admins/doctors/${id}`, { method: 'DELETE' }),
+  // User Account Management
+  getAllUsers: () => fetchWithCookies('/admins/users', { method: 'GET' }),
+  updateUserStatus: (id: string, is_active: boolean) => fetchWithCookies(`/admins/users/${id}/status`, { method: 'PUT', body: JSON.stringify({ is_active }) }),
+  deleteUser: (id: string) => fetchWithCookies(`/admins/users/${id}`, { method: 'DELETE' }),
+  // Flags
+  getAllFlags: () => fetchWithCookies('/admins/flags', { method: 'GET' }),
+  updateFlag: (id: string, data: any) => fetchWithCookies(`/admins/flags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteFlag: (id: string) => fetchWithCookies(`/admins/flags/${id}`, { method: 'DELETE' }),
+  // Audit Logs
+  getAuditLogs: () => fetchWithCookies('/admins/audit-logs', { method: 'GET' }),
 };

@@ -22,11 +22,15 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
   const [isLoading, setIsLoading] = useState(true);
 
   // Edit States for inline editing
-  const [editField, setEditField] = useState<'address' | 'emergencyContactName' | 'emergencyContactPhone' | 'email' | 'phone' | 'name' | null>(null);
+  const [editField, setEditField] = useState<'address' | 'emergencyContactName' | 'emergencyContactPhone' | 'email' | 'phone' | 'name' | 'knownAllergies' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editValueLast, setEditValueLast] = useState(''); 
   const [editCountryCode, setEditCountryCode] = useState('+91');
   const [editError, setEditError] = useState<string>('');
+  
+  // Specific array state for editing allergies
+  const [editAllergies, setEditAllergies] = useState<string[]>([]);
+  const [newAllergy, setNewAllergy] = useState('');
   
   const [avatarError, setAvatarError] = useState<string>(''); 
 
@@ -108,6 +112,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
       }
       setEditCountryCode(foundCode);
       setEditValue(num.replace(/\D/g, '')); // Strip non-digits
+    } else if (field === 'knownAllergies') {
+      setEditAllergies([...(profile.knownAllergies || [])]);
+      setNewAllergy('');
     } else {
       setEditValue(profile[field] || '');
     }
@@ -122,6 +129,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
       setEditValue(val);
       setEditError('');
     }
+  };
+
+  const handleAddAllergy = () => {
+    if (newAllergy.trim() && !editAllergies.includes(newAllergy.trim())) {
+      setEditAllergies([...editAllergies, newAllergy.trim()]);
+      setNewAllergy('');
+    }
+  };
+
+  const handleRemoveAllergy = (idx: number) => {
+    setEditAllergies(editAllergies.filter((_, i) => i !== idx));
   };
 
   const handleSaveEdit = async () => {
@@ -173,11 +191,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
       }
     } else {
       const originalValue = profile[editField];
-      let finalPayloadValue = editValue;
+      let finalPayloadValue: any = editValue;
       
-      // Re-combine country code and number for saving
       if (editField === 'phone' || editField === 'emergencyContactPhone') {
         finalPayloadValue = `${editCountryCode} ${editValue}`;
+      } else if (editField === 'knownAllergies') {
+        finalPayloadValue = editAllergies;
       }
 
       setProfile((prev: any) => ({ ...prev, [editField]: finalPayloadValue }));
@@ -316,7 +335,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                           value={editCountryCode}
                           onChange={(e) => {
                             setEditCountryCode(e.target.value);
-                            setEditValue(''); // Reset value so it adheres to new limits
+                            setEditValue(''); 
                             setEditError('');
                           }}
                           className="w-24 px-2 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 cursor-pointer"
@@ -376,7 +395,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                   <div className="flex justify-between items-center mb-0.5">
                     <p className="text-slate-500">Emergency Contact Name</p>
                     {editField !== 'emergencyContactName' && (
-                      <button onClick={() => startEdit('emergencyContactName')} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEdit('emergencyContactName')} className="text-teal-500 hover:text-teal-700 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -384,7 +403,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                   {editField === 'emergencyContactName' ? (
                     <div className="flex flex-col gap-1">
                       <div className="flex gap-2">
-                        <input type="text" maxLength={50} value={editValue} onChange={(e) => { setEditValue(e.target.value); setEditError(''); }} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <input type="text" maxLength={50} value={editValue} onChange={(e) => { setEditValue(e.target.value); setEditError(''); }} className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
                         <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
                         <button onClick={() => { setEditField(null); setEditError(''); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><X className="w-4 h-4" /></button>
                       </div>
@@ -400,7 +419,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                   <div className="flex justify-between items-center mb-0.5">
                     <p className="text-slate-500">Emergency Contact Number</p>
                     {editField !== 'emergencyContactPhone' && (
-                      <button onClick={() => startEdit('emergencyContactPhone')} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEdit('emergencyContactPhone')} className="text-teal-500 hover:text-teal-700 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -412,10 +431,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                           value={editCountryCode}
                           onChange={(e) => {
                             setEditCountryCode(e.target.value);
-                            setEditValue(''); // Reset value so it adheres to new limits
+                            setEditValue(''); 
                             setEditError('');
                           }}
-                          className="w-24 px-2 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 cursor-pointer"
+                          className="w-24 px-2 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none bg-slate-50 cursor-pointer"
                         >
                           {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.code} ({c.country})</option>)}
                         </select>
@@ -423,7 +442,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                           type="tel" 
                           value={editValue} 
                           onChange={handlePhoneChange} 
-                          className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+                          className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none" 
                           placeholder="Numbers only"
                         />
                         <button onClick={handleSaveEdit} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"><Save className="w-4 h-4" /></button>
@@ -436,19 +455,61 @@ const ProfileView: React.FC<ProfileViewProps> = ({ avatar, onAvatarChange, onPro
                   )}
                 </div>
 
+                {/* Editable Known Allergies */}
                 <div>
-                  <p className="text-slate-500 mb-1.5">Known Allergies</p>
-                  <div className="flex flex-wrap gap-2">
-                    {profile.knownAllergies && profile.knownAllergies.length > 0 ? (
-                      profile.knownAllergies.map((allergy: string, idx: number) => (
-                        <span key={idx} className="bg-red-50 text-red-700 px-2.5 py-1 rounded-md text-xs font-semibold border border-red-100 hover:bg-red-100 transition-colors cursor-default">
-                          {allergy}
-                        </span>
-                      ))
-                    ) : (
-                      <p className="text-slate-400 italic">Will update later</p>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <p className="text-slate-500">Known Allergies</p>
+                    {editField !== 'knownAllergies' && (
+                      <button onClick={() => startEdit('knownAllergies')} className="text-teal-500 hover:text-teal-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </div>
+                  {editField === 'knownAllergies' ? (
+                    <div className="space-y-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          value={newAllergy}
+                          onChange={(e) => setNewAllergy(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddAllergy(); } }}
+                          placeholder="Type allergy and press Add"
+                          className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                        />
+                        <button onClick={handleAddAllergy} className="px-3 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 text-sm font-semibold transition-colors shadow-sm">Add</button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 min-h-[28px]">
+                        {editAllergies.length > 0 ? editAllergies.map((allergy, idx) => (
+                          <span key={idx} className="bg-red-50 text-red-700 px-2.5 py-1 rounded-md text-xs font-semibold border border-red-100 flex items-center gap-1.5 shadow-sm">
+                            {allergy}
+                            <button onClick={() => handleRemoveAllergy(idx)} className="text-red-400 hover:text-red-800 hover:bg-red-100 rounded-full p-0.5 transition-colors">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )) : (
+                          <span className="text-xs text-slate-400 italic flex items-center">No allergies added yet.</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2 justify-end pt-2 border-t border-slate-200">
+                        <button onClick={() => { setEditField(null); setEditError(''); }} className="px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+                        <button onClick={handleSaveEdit} className="px-4 py-1.5 text-sm font-semibold bg-teal-600 text-white hover:bg-teal-700 rounded-lg shadow-sm transition-colors flex items-center gap-1">
+                          <Save className="w-4 h-4" /> Save Allergies
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {profile.knownAllergies && profile.knownAllergies.length > 0 ? (
+                        profile.knownAllergies.map((allergy: string, idx: number) => (
+                          <span key={idx} className="bg-red-50 text-red-700 px-2.5 py-1 rounded-md text-xs font-semibold border border-red-100 cursor-default shadow-sm">
+                            {allergy}
+                          </span>
+                        ))
+                      ) : (
+                        <p className="text-slate-400 italic">Will update later</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
               </div>
