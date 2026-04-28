@@ -3,16 +3,16 @@ import User from '../../models/User.js';
 import PatientProfile from '../../models/PatientProfile.js';
 import DoctorProfile from '../../models/DoctorProfile.js';
 import UnsuitableMedicine from '../../models/UnsuitableMedicine.js';
+import AuditService from '../../services/audit.service.js'; // NEW: Imported AuditService
 
 export const getAdminProfile = async (req, res) => {
   try {
-    const profile = await AdminProfile.findOne({ user_id: req.user.id });
-    const user = await User.findById(req.user.id).select('login_history');
+    const profile = await AdminProfile.findOne({ user_id: req.user?.id });
+    const user = await User.findById(req.user?.id).select('login_history');
 
     if (!profile) return res.status(404).json({ success: false, message: 'Admin profile not found' });
 
-    // Determine the correct "Last Login" time to show in the UI
-    const history = user.login_history || [];
+    const history = user?.login_history || [];
     let previousSessionDate = null;
 
     if (history.length > 1) {
@@ -30,7 +30,6 @@ export const getAdminProfile = async (req, res) => {
   }
 };
 
-// NEW: Update Admin Profile Handler
 export const updateAdminProfile = async (req, res) => {
   try {
     const { 
@@ -39,10 +38,9 @@ export const updateAdminProfile = async (req, res) => {
       newLeaveRequest, updateLeaveRequest, deleteLeaveRequestId
     } = req.body;
     
-    const profile = await AdminProfile.findOne({ user_id: req.user.id });
+    const profile = await AdminProfile.findOne({ user_id: req.user?.id });
     if (!profile) return res.status(404).json({ success: false, message: 'Profile not found' });
     
-    // 1. Standard field updates
     if (firstName) profile.firstName = firstName;
     if (lastName) profile.lastName = lastName;
     if (department !== undefined) profile.department = department;
@@ -53,12 +51,8 @@ export const updateAdminProfile = async (req, res) => {
     if (avatarBase64) profile.avatar = avatarBase64;
     if (education !== undefined) profile.education = education;
 
-    // 2. Create New Absence Request
-    if (newLeaveRequest) {
-      profile.leave_requests.push(newLeaveRequest);
-    }
+    if (newLeaveRequest) profile.leave_requests.push(newLeaveRequest);
 
-    // 3. Edit Existing Absence Request (Max 2 edits check)
     if (updateLeaveRequest) {
       const targetLeave = profile.leave_requests.id(updateLeaveRequest._id);
       if (targetLeave && targetLeave.editCount < 2) {
@@ -70,34 +64,37 @@ export const updateAdminProfile = async (req, res) => {
       }
     }
 
-    // 4. Delete Absence Request
     if (deleteLeaveRequestId) {
       profile.leave_requests.pull(deleteLeaveRequestId);
     }
 
-    // 5. 30-Day Cleanup Rule
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     profile.leave_requests = profile.leave_requests.filter(req => req.fromDate >= thirtyDaysAgo);
 
     await profile.save();
+    const user = await User.findById(req.user?.id).select('last_login_at');
 
-    const user = await User.findById(req.user.id).select('last_login_at');
+    // --- AUDIT LOG: Admin Update ---
+    AuditService.logAction(req, {
+      action_type: 'UPDATE',
+      entity_type: 'admin',
+      entity_id: profile._id,
+      new_values: { updateType: 'PROFILE_OR_ABSENCE_EDIT' }
+    });
 
     res.status(200).json({ 
       success: true, 
-      data: { ...profile.toObject(), last_login_at: user.last_login_at } 
+      data: { ...profile.toObject(), last_login_at: user?.last_login_at } 
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
 
-// --- NEW: PATIENT MANAGEMENT BY ADMIN ---
-
+// --- PATIENT MANAGEMENT ---
 export const getAllPatients = async (req, res) => {
   try {
-    // Populate user_id to get the email from the User collection
     const patients = await PatientProfile.find({ is_deleted: false })
       .populate('user_id', 'email')
       .sort({ createdAt: -1 });
@@ -120,18 +117,13 @@ export const updatePatientByAdmin = async (req, res) => {
     const patient = await PatientProfile.findById(id);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
 
-    // 1. Handle Email Update in the User model
     if (email) {
       const formattedEmail = email.toLowerCase();
-      // Check for collisions
       const existingUser = await User.findOne({ email: formattedEmail, _id: { $ne: patient.user_id } });
-      if (existingUser) {
-        return res.status(400).json({ success: false, message: 'Email is already in use by another account.' });
-      }
+      if (existingUser) return res.status(400).json({ success: false, message: 'Email is already in use by another account.' });
       await User.findByIdAndUpdate(patient.user_id, { email: formattedEmail });
     }
 
-    // 2. Update Patient Profile fields
     if (firstName) patient.firstName = firstName;
     if (lastName) patient.lastName = lastName;
     if (dob) patient.dob = dob;
@@ -147,9 +139,15 @@ export const updatePatientByAdmin = async (req, res) => {
 
     await patient.save();
 
-    // 3. Return fully populated document for immediate frontend state update
+    // --- AUDIT LOG: Admin Updated Patient ---
+    AuditService.logAction(req, {
+      action_type: 'UPDATE',
+      entity_type: 'patient',
+      entity_id: patient._id,
+      new_values: { firstName, lastName, phone, email }
+    });
+
     const updatedPatient = await PatientProfile.findById(id).populate('user_id', 'email');
-    
     res.status(200).json({ success: true, data: updatedPatient });
   } catch (error) {
     console.error(error);
@@ -164,8 +162,15 @@ export const deletePatientByAdmin = async (req, res) => {
     const patient = await PatientProfile.findByIdAndUpdate(id, { is_deleted: true });
     if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
 
-    // Soft delete the base user account as well to prevent login
     await User.findByIdAndUpdate(patient.user_id, { is_deleted: true, is_active: false });
+
+    // --- AUDIT LOG: Admin Deleted Patient ---
+    AuditService.logAction(req, {
+      action_type: 'DELETE',
+      entity_type: 'patient',
+      entity_id: patient._id,
+      new_values: { is_deleted: true }
+    });
 
     res.status(200).json({ success: true, message: 'Patient record deleted securely.' });
   } catch (error) {
@@ -173,11 +178,9 @@ export const deletePatientByAdmin = async (req, res) => {
   }
 };
 
-// --- DOCTOR MANAGEMENT BY ADMIN ---
-
+// --- DOCTOR MANAGEMENT ---
 export const getAllDoctors = async (req, res) => {
   try {
-    // Populate user_id to get the login_history from the User collection
     const doctors = await DoctorProfile.find({ is_deleted: false })
       .populate('user_id', 'login_history')
       .sort({ createdAt: -1 });
@@ -199,7 +202,6 @@ export const updateDoctorByAdmin = async (req, res) => {
     const doctor = await DoctorProfile.findById(id);
     if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found' });
 
-    // Update Doctor Profile fields
     if (firstName) doctor.firstName = firstName;
     if (lastName) doctor.lastName = lastName;
     if (specialization !== undefined) doctor.specialization = specialization;
@@ -211,9 +213,15 @@ export const updateDoctorByAdmin = async (req, res) => {
 
     await doctor.save();
 
-    // Return fully populated document for immediate frontend state update
+    // --- AUDIT LOG: Admin Updated Doctor ---
+    AuditService.logAction(req, {
+      action_type: 'UPDATE',
+      entity_type: 'doctor',
+      entity_id: doctor._id,
+      new_values: { firstName, lastName, department, specialization }
+    });
+
     const updatedDoctor = await DoctorProfile.findById(id).populate('user_id', 'login_history');
-    
     res.status(200).json({ success: true, data: updatedDoctor });
   } catch (error) {
     console.error(error);
@@ -228,8 +236,15 @@ export const deleteDoctorByAdmin = async (req, res) => {
     const doctor = await DoctorProfile.findByIdAndUpdate(id, { is_deleted: true });
     if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found' });
 
-    // Soft delete the base user account as well to prevent login
     await User.findByIdAndUpdate(doctor.user_id, { is_deleted: true, is_active: false });
+
+    // --- AUDIT LOG: Admin Deleted Doctor ---
+    AuditService.logAction(req, {
+      action_type: 'DELETE',
+      entity_type: 'doctor',
+      entity_id: doctor._id,
+      new_values: { is_deleted: true }
+    });
 
     res.status(200).json({ success: true, message: 'Doctor record deleted securely.' });
   } catch (error) {
@@ -237,27 +252,22 @@ export const deleteDoctorByAdmin = async (req, res) => {
   }
 };
 
-// --- USER ACCOUNT MANAGEMENT BY ADMIN ---
-
+// --- USER ACCOUNT MANAGEMENT ---
 export const getAllUsers = async (req, res) => {
   try {
-    // 1. Fetch all active base users
     const users = await User.find({ is_deleted: false }).select('-password').sort({ createdAt: -1 }).lean();
 
-    // 2. Fetch all profiles in parallel to avoid N+1 query performance issues
     const [patients, doctors, admins] = await Promise.all([
       PatientProfile.find({ is_deleted: false }).select('user_id firstName lastName').lean(),
       DoctorProfile.find({ is_deleted: false }).select('user_id firstName lastName').lean(),
       AdminProfile.find({ is_deleted: false }).select('user_id firstName lastName').lean()
     ]);
 
-    // 3. Create a quick lookup map: { "HCU0001": "John Doe" }
     const nameMap = {};
     patients.forEach(p => { if (p.user_id) nameMap[p.user_id.toString()] = `${p.firstName} ${p.lastName}`; });
     doctors.forEach(d => { if (d.user_id) nameMap[d.user_id.toString()] = `${d.firstName} ${d.lastName}`; });
     admins.forEach(a => { if (a.user_id) nameMap[a.user_id.toString()] = `${a.firstName} ${a.lastName}`; });
 
-    // 4. Attach names to the user array
     const mappedUsers = users.map(u => ({
       id: u._id,
       email: u.email,
@@ -279,7 +289,6 @@ export const updateUserStatus = async (req, res) => {
     const { id } = req.params;
     const { is_active } = req.body;
 
-    // Safely check if the user is trying to suspend themselves
     if (req.user && req.user.id === id && !is_active) {
       return res.status(400).json({ success: false, message: 'You cannot suspend your own active session.' });
     }
@@ -292,6 +301,14 @@ export const updateUserStatus = async (req, res) => {
     
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+    // --- AUDIT LOG: Admin Changed User Auth Status ---
+    AuditService.logAction(req, {
+      action_type: 'UPDATE',
+      entity_type: 'user',
+      entity_id: user._id,
+      new_values: { is_active }
+    });
+
     res.status(200).json({ 
       success: true, 
       message: `User account ${is_active ? 'activated' : 'suspended'} successfully.`,
@@ -303,12 +320,10 @@ export const updateUserStatus = async (req, res) => {
   }
 };
 
-// UPDATED: Added Optional Chaining (req.user?.id) to prevent TypeError
 export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Safely check if the user is trying to delete themselves
     if (req.user && req.user.id === id) {
       return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
     }
@@ -321,6 +336,14 @@ export const deleteUser = async (req, res) => {
 
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+    // --- AUDIT LOG: Admin Deleted User Account ---
+    AuditService.logAction(req, {
+      action_type: 'DELETE',
+      entity_type: 'user',
+      entity_id: user._id,
+      new_values: { is_deleted: true }
+    });
+
     res.status(200).json({ success: true, message: 'User account securely deleted.' });
   } catch (error) {
     console.error('Delete User Error:', error);
@@ -332,7 +355,6 @@ export const deleteUser = async (req, res) => {
 
 export const getAllFlags = async (req, res) => {
   try {
-    // Fetch only active flags marked as 'Unsuit'
     const flags = await UnsuitableMedicine.find({ flag_type: 'Unsuit', is_deleted: false })
       .populate('patient_id', 'firstName lastName _id')
       .populate('flagged_by_doctor_id', 'firstName lastName _id')
@@ -353,7 +375,6 @@ export const updateFlagByAdmin = async (req, res) => {
     const flag = await UnsuitableMedicine.findById(id);
     if (!flag) return res.status(404).json({ success: false, message: 'Flag not found' });
 
-    // Handle Audit Trail logic if changing from Unsuit -> Suit
     if (flag_type === 'Suit' && flag.flag_type === 'Unsuit') {
       flag.is_active = false;
       flag.removed_by_user_id = req.user?.id; 
@@ -369,7 +390,14 @@ export const updateFlagByAdmin = async (req, res) => {
 
     await flag.save();
 
-    // Re-populate to send back complete data for frontend state update
+    // --- AUDIT LOG: Admin Updated Medical Flag ---
+    AuditService.logAction(req, {
+      action_type: 'UPDATE',
+      entity_type: 'unsuitable_medicine',
+      entity_id: flag._id,
+      new_values: { flag_type, severity, is_active: flag.is_active }
+    });
+
     const updatedFlag = await UnsuitableMedicine.findById(id)
       .populate('patient_id', 'firstName lastName _id')
       .populate('flagged_by_doctor_id', 'firstName lastName _id');
@@ -385,7 +413,6 @@ export const deleteFlagByAdmin = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Soft delete the flag
     const flag = await UnsuitableMedicine.findByIdAndUpdate(
       id, 
       { is_deleted: true, is_active: false }, 
@@ -393,6 +420,14 @@ export const deleteFlagByAdmin = async (req, res) => {
     );
     
     if (!flag) return res.status(404).json({ success: false, message: 'Flag not found' });
+
+    // --- AUDIT LOG: Admin Deleted Medical Flag ---
+    AuditService.logAction(req, {
+      action_type: 'DELETE',
+      entity_type: 'unsuitable_medicine',
+      entity_id: flag._id,
+      new_values: { is_deleted: true }
+    });
 
     res.status(200).json({ success: true, message: 'Medication flag securely deleted.' });
   } catch (error) {
