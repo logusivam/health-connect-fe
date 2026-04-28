@@ -3,7 +3,7 @@ import { getAdminProfile, updateAdminProfile, getAllPatients,
     updatePatientByAdmin, deletePatientByAdmin, getAllDoctors,
     updateDoctorByAdmin, deleteDoctorByAdmin, getAllUsers,
     updateUserStatus, deleteUser, getAllFlags,
-    updateFlagByAdmin, deleteFlagByAdmin
+    updateFlagByAdmin, deleteFlagByAdmin, getAuditLogs
  } from '../../controllers/v1/admin.controller.js';
 import { protect } from '../../middlewares/auth.middleware.js';
 
@@ -32,5 +32,8 @@ router.delete('/users/:id', deleteUser);
 router.get('/flags', getAllFlags);
 router.put('/flags/:id', updateFlagByAdmin);
 router.delete('/flags/:id', deleteFlagByAdmin);
+
+// Audit Logs Routes
+router.get('/audit-logs', getAuditLogs);
 
 export default router;

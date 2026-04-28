@@ -4,6 +4,7 @@ import PatientProfile from '../../models/PatientProfile.js';
 import DoctorProfile from '../../models/DoctorProfile.js';
 import UnsuitableMedicine from '../../models/UnsuitableMedicine.js';
 import AuditService from '../../services/audit.service.js'; // NEW: Imported AuditService
+import AuditLog from '../../models/AuditLog.js';
 
 export const getAdminProfile = async (req, res) => {
   try {
@@ -435,3 +436,19 @@ export const deleteFlagByAdmin = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server Error deleting flag.' });
   }
 };
+
+// --- SYSTEM AUDIT LOGS ---
+export const getAuditLogs = async (req, res) => {
+  try {
+    // Fetch latest 200 logs to prevent heavy payload blocking
+    const logs = await AuditLog.find()
+      .sort({ occurred_at: -1 })
+      .limit(200)
+      .lean();
+
+    res.status(200).json({ success: true, data: logs });
+  } catch (error) {
+    console.error("Error fetching audit logs:", error);
+    res.status(500).json({ success: false, message: 'Server Error fetching audit logs.' });
+  }
+};                                                                                               

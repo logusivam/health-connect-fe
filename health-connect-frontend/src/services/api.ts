@@ -83,4 +83,6 @@ export const adminApi = {
   getAllFlags: () => fetchWithCookies('/admins/flags', { method: 'GET' }),
   updateFlag: (id: string, data: any) => fetchWithCookies(`/admins/flags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteFlag: (id: string) => fetchWithCookies(`/admins/flags/${id}`, { method: 'DELETE' }),
+  // Audit Logs
+  getAuditLogs: () => fetchWithCookies('/admins/audit-logs', { method: 'GET' }),
 };
