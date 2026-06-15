@@ -544,7 +544,15 @@ export default function HomePage() {
               <li><a href="#features">Features</a></li>
               <li><a href="#stats">Platform Stats</a></li>
             </ul>
-            <span className="ft-copy">© {new Date().getFullYear()} HealthConnect. All rights reserved.</span>
+            <div className="w-full text-slate-500 text-[10px] leading-relaxed max-w-5xl text-center mt-6 border-t border-white/5 pt-6">
+              <p className="mb-2">
+                Health Connect patient management system and clinical treatment record software developed by Loganathan G P, a professional healthcare software engineer. Under the Logusivam Vision, this full stack medical portal is designed using the MERN stack (MongoDB healthcare authentication flow, React and Node.js healthcare dashboard, TypeScript medical record management system) to support role-based healthcare administration, doctor appointment booking, and unsuitable medicine tracking.
+              </p>
+              <p className="text-[9px] text-slate-600">
+                Health Connect project Logusivam | G P Loganathan MERN stack Health Connect | Comprehensive medical portal Health Connect developed by Logusivam Vision.
+              </p>
+            </div>
+            <span className="ft-copy mt-4">© {new Date().getFullYear()} HealthConnect. All rights reserved.</span>
           </footer>
         </>
       )}

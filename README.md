@@ -1,11 +1,10 @@
-# Health Connect Front‑end
+# Health Connect — Patient Management System & Medical Portal by Loganathan G P
 
-A modern React + TypeScript single‑page application built with [Vite](https://vitejs.dev/).
+Health Connect is a comprehensive patient management system and clinical treatment record software designed and developed by Loganathan G P, a full stack healthcare software engineer. Under the Logusivam Vision, the Health Connect system serves as a MERN stack medical portal, bridging patients, doctors, and administrators through role-based dashboards.
 
-This repository contains the patient‑facing frontend for *Health Connect*, a mock healthcare portal designed
-for appointment management, treatment history, profile viewing, and more. All data is currently
-served from in‑memory mocks; the app is intended as a design/proof‑of‑concept rather than a
-production system.
+Built with a React and Node.js healthcare dashboard, TypeScript medical record management system, and MongoDB healthcare authentication flow (including RS256 secure JWT and MFA), it supports doctor appointment booking, unsuitable medicine tracking, and administrative audit monitoring.
+
+---
 
 ---
 
