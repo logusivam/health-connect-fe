@@ -1,0 +1,88 @@
+import { API_BASE_URL } from '../config/env';
+
+// Base fetch wrapper to automatically include cookies
+const fetchWithCookies = async (endpoint: string, options: RequestInit = {}) => {
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    credentials: 'include', // CRITICAL: This sends the httpOnly cookies
+  });
+
+  // --- NEW: Global 401 Interceptor ---
+  // If the backend says the token is invalid/expired, broadcast it to the app.
+  if (res.status === 401) {
+    window.dispatchEvent(new Event('session-expired'));
+  }
+  
+  return res.json();
+};
+
+export const authApi = {
+  login: (data: any) => fetchWithCookies('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+  register: (data: any) => fetchWithCookies('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+  logout: () => fetchWithCookies('/auth/logout', { method: 'POST' }),
+  getMe: () => fetchWithCookies('/auth/me', { method: 'GET' }),
+  // Inside export const authApi = { ... }
+  sendLoginOtp: (data: { email: string, role: string }) => fetchWithCookies('/auth/login/send-otp', { method: 'POST', body: JSON.stringify(data) }),
+  verifyLoginOtp: (data: { email: string, otp: string }) => fetchWithCookies('/auth/login/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
+  // ... forget password routes ...
+  sendResetOtp: (data: { email: string, role: string }) => fetchWithCookies('/auth/forgot-password/send-otp', { method: 'POST', body: JSON.stringify(data) }),
+  verifyResetOtp: (data: { email: string, otp: string }) => fetchWithCookies('/auth/forgot-password/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
+  resetPassword: (data: any) => fetchWithCookies('/auth/forgot-password/reset', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export const patientApi = {
+  getProfile: () => fetchWithCookies('/patients/profile', { method: 'GET' }),
+  updateProfile: (data: any) => fetchWithCookies('/patients/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  bookAppointment: (data: any) => fetchWithCookies('/patients/appointments', { method: 'POST', body: JSON.stringify(data) }),
+  getAppointments: () => fetchWithCookies('/patients/get-appointments', { method: 'GET' }), 
+  getFlags: () => fetchWithCookies('/patients/flags', { method: 'GET' }),
+  getHistory: () => fetchWithCookies('/patients/history', { method: 'GET' })
+
+};
+
+export const doctorApi = {
+  getProfile: () => fetchWithCookies('/doctors/profile', { method: 'GET' }),
+  updateProfile: (data: any) => fetchWithCookies('/doctors/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  // ADDED: Fetch all doctors for the booking page
+  getDirectory: () => fetchWithCookies('/doctors/directory', { method: 'GET' }),
+  // ... unsuitable medicine flagging routes ...
+  searchPatients: (q: string) => fetchWithCookies(`/doctors/patients/search?q=${q}`, { method: 'GET' }),
+  getDepartmentMedicines: () => fetchWithCookies('/doctors/medicines', { method: 'GET' }),
+  getFlags: () => fetchWithCookies('/doctors/flags', { method: 'GET' }),
+  createFlag: (data: any) => fetchWithCookies('/doctors/flags', { method: 'POST', body: JSON.stringify(data) }),
+  updateFlag: (id: string, data: any) => fetchWithCookies(`/doctors/flags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getTodayAppointments: () => fetchWithCookies('/doctors/appointments/today', { method: 'GET' }),
+  getTreatmentRecords: () => fetchWithCookies('/doctors/treatment-records', { method: 'GET' }),
+  updateTreatmentRecord: (id: string, data: any) => fetchWithCookies(`/doctors/treatment-records/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getPatientsHistory: () => fetchWithCookies('/doctors/patients-history', { method: 'GET' }),
+};
+
+// ADDED: New API group for metadata
+export const metadataApi = {
+  getDepartments: () => fetchWithCookies('/metadata/departments', { method: 'GET' })
+};
+
+export const adminApi = {
+  // Admin Profile
+  getProfile: () => fetchWithCookies('/admins/profile', { method: 'GET' }),
+  updateProfile: (data: any) => fetchWithCookies('/admins/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  // Patient Management
+  getAllPatients: () => fetchWithCookies('/admins/patients', { method: 'GET' }),
+  updatePatient: (id: string, data: any) => fetchWithCookies(`/admins/patients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePatient: (id: string) => fetchWithCookies(`/admins/patients/${id}`, { method: 'DELETE' }),
+  // Doctor Management
+  getAllDoctors: () => fetchWithCookies('/admins/doctors', { method: 'GET' }),
+  updateDoctor: (id: string, data: any) => fetchWithCookies(`/admins/doctors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDoctor: (id: string) => fetchWithCookies(`/admins/doctors/${id}`, { method: 'DELETE' }),
+  // User Account Management
+  getAllUsers: () => fetchWithCookies('/admins/users', { method: 'GET' }),
+  updateUserStatus: (id: string, is_active: boolean) => fetchWithCookies(`/admins/users/${id}/status`, { method: 'PUT', body: JSON.stringify({ is_active }) }),
+  deleteUser: (id: string) => fetchWithCookies(`/admins/users/${id}`, { method: 'DELETE' }),
+  // Flags
+  getAllFlags: () => fetchWithCookies('/admins/flags', { method: 'GET' }),
+  updateFlag: (id: string, data: any) => fetchWithCookies(`/admins/flags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteFlag: (id: string) => fetchWithCookies(`/admins/flags/${id}`, { method: 'DELETE' }),
+  // Audit Logs
+  getAuditLogs: () => fetchWithCookies('/admins/audit-logs', { method: 'GET' }),
+};

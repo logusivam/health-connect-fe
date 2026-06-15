@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Shield, Activity, Stethoscope, HeartPulse } from "lucide-react";
+import { Activity, Stethoscope, HeartPulse } from "lucide-react";
 
 interface Props {
   children: ReactNode;

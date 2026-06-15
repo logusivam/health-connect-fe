@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom'; // Add this line
-import { LayoutDashboard, User, ClipboardList, CalendarPlus, LogOut, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { LayoutDashboard, User, ClipboardList, CalendarPlus, ChevronLeft, ChevronRight, AlertCircle, X } from 'lucide-react';
 import favIcon from '../../assets/logo-v1.png';
 import type { ViewState } from '../../types/patient.types';
-import { mockProfile } from '../../data/mockPatientData';
+import { patientApi } from '../../services/api';
 
 import Topbar from '../../components/patient/Topbar';
 import DashboardHome from '../../components/patient/DashboardHome';
@@ -16,15 +16,72 @@ export default function PatientDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Dynamically get the view from the URL (e.g., /patient/history -> 'HISTORY')
   const urlPath = location.pathname.split('/')[2];
   const activeView = (urlPath ? urlPath.toUpperCase() : 'DASHBOARD') as ViewState;
   
   const [highlightedRecordId, setHighlightedRecordId] = useState<string | null>(null);
-  const [userAvatar, setUserAvatar] = useState<string | undefined>(mockProfile.avatar);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // Reordered navigation items
+  // Global State for Topbar
+  const [userAvatar, setUserAvatar] = useState<string | undefined>(undefined);
+  const [userName, setUserName] = useState<string>('');
+  const [patientId, setPatientId] = useState<string>('');
+
+  // --- NEW: Global Persistent Toast State for Follow-ups ---
+  const [missingFollowUpToast, setMissingFollowUpToast] = useState(false);
+
+  useEffect(() => {
+    const initProfileAndCheckFollowUps = async () => {
+      try {
+        const [profileRes, apptsRes] = await Promise.all([
+          patientApi.getProfile(),
+          patientApi.getAppointments()
+        ]);
+        
+        if (profileRes.success) {
+          setUserName(`${profileRes.data.firstName} ${profileRes.data.lastName}`);
+          setPatientId(profileRes.data._id);
+          if (profileRes.data.avatar) setUserAvatar(profileRes.data.avatar);
+        }
+
+        // --- Follow-up Toast Logic ---
+        if (apptsRes.success) {
+          const records = apptsRes.data;
+          
+          // Find records that REQUIRE a follow-up
+          const needsFollowUp = records.filter((r: any) => r.outcomeStatus === 'Follow up required' && r.followUpDate);
+          
+          let hasMissing = false;
+          
+          for (const req of needsFollowUp) {
+            //const fDateStr = new Date(req.followUpDate).toISOString().split('T')[0];
+            const originalVisitTime = new Date(req.visitDate).getTime();
+            const fDateTime = new Date(req.followUpDate).getTime();
+            
+            // Check if there is ANY appointment booked ON OR BEFORE the followUpDate (but after the original visit)
+            const isBooked = records.some((r: any) => {
+              const vTime = new Date(r.visitDate).getTime();
+              return vTime > originalVisitTime && vTime <= fDateTime;
+            });
+            
+            if (!isBooked) {
+              hasMissing = true;
+              break;
+            }
+          }
+
+          if (hasMissing) {
+            setMissingFollowUpToast(true);
+            setTimeout(() => setMissingFollowUpToast(false), 15000); // Hide after 15 seconds
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load initial profile data', err);
+      }
+    };
+    initProfileAndCheckFollowUps();
+  }, []);
+
   const navItems = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'HISTORY', label: 'Treatment History', icon: ClipboardList },
@@ -34,7 +91,6 @@ export default function PatientDashboard() {
   ] as const;
 
   const handleNavigate = (view: ViewState, recordId?: string) => {
-    // Change the URL instead of just state
     navigate(`/patient/${view.toLowerCase()}`); 
     
     if (recordId) {
@@ -46,15 +102,28 @@ export default function PatientDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans">
+    <div className="min-h-screen bg-slate-50 flex font-sans relative">
       
+      {/* --- IN-VIEWPORT GLOBAL TOAST NOTIFICATION --- */}
+      {missingFollowUpToast && (
+        <div className="fixed top-20 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl border flex items-start gap-4 animate-in slide-in-from-top-4 fade-in duration-500 bg-orange-50 border-orange-200 text-orange-800 max-w-md">
+          <AlertCircle className="w-6 h-6 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="font-bold text-base block mb-0.5">Follow-up Action Required!</span>
+            <span className="text-sm font-medium block">You have pending follow-up instructions from a recent visit. Please book your appointment before the specified date.</span>
+          </div>
+          <button onClick={() => setMissingFollowUpToast(false)} className="text-orange-400 hover:text-orange-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       {/* Sidebar - Desktop */}
       <aside 
         className={`hidden lg:flex flex-col bg-slate-900 text-white min-h-screen sticky top-0 transition-all duration-300 ease-in-out relative ${
           isSidebarOpen ? 'w-72' : 'w-20'
         }`}
       >
-        {/* Toggle Collapse Button */}
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="absolute -right-3 top-6 bg-slate-800 text-slate-300 p-1.5 rounded-full border border-slate-700 hover:text-white hover:bg-slate-700 transition-all z-20 shadow-md hover:scale-110"
@@ -90,7 +159,6 @@ export default function PatientDashboard() {
                 {item.label}
               </span>
 
-              {/* Tooltip for collapsed state */}
               {!isSidebarOpen && (
                  <div className="absolute left-full ml-4 px-3 py-2 bg-slate-800 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none translate-x-2 group-hover:translate-x-0 shadow-xl border border-slate-700">
                     {item.label}
@@ -101,11 +169,11 @@ export default function PatientDashboard() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
+        {/* <div className="p-4 border-t border-slate-800">
           <button 
-            onClick={() => { 
-              localStorage.removeItem('userRole');
-              window.location.href = '/login';
+            onClick={async () => { 
+              await authApi.logout(); 
+              window.location.href = '/login'; 
             }}
             className={`w-full flex items-center group relative px-3 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors font-medium ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}
           >
@@ -115,7 +183,6 @@ export default function PatientDashboard() {
               Sign Out
             </span>
 
-            {/* Tooltip for collapsed state */}
             {!isSidebarOpen && (
                <div className="absolute left-full ml-4 px-3 py-2 bg-slate-800 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none translate-x-2 group-hover:translate-x-0 shadow-xl border border-slate-700">
                   Sign Out
@@ -123,12 +190,14 @@ export default function PatientDashboard() {
                </div>
             )}
           </button>
-        </div>
+        </div> */}
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Topbar avatar={userAvatar} />
+        
+        {/* Pass the globally fetched data to Topbar */}
+        <Topbar avatar={userAvatar} name={userName} patientId={patientId} />
         
         {/* Mobile Navigation (Simple Tab Bar) */}
         <div className="lg:hidden bg-white border-b border-slate-200 px-4 py-2 flex overflow-x-auto hide-scrollbar sticky top-16 z-10 transition-all">
@@ -149,13 +218,24 @@ export default function PatientDashboard() {
         </div>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto bg-slate-50/50">
-          {/* Main content wrapper with mount animation keys */}
           <div key={activeView} className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both">
             {activeView === 'DASHBOARD' && <DashboardHome onNavigate={handleNavigate} />}
             {activeView === 'HISTORY' && <TreatmentHistoryView highlightedRecordId={highlightedRecordId} />}
             {activeView === 'UNSUITABLE_MEDICINE' && <UnsuitableMedicineView />}
-            {activeView === 'BOOK_APPOINTMENT' && <BookAppointmentView />}
-            {activeView === 'PROFILE' && <ProfileView avatar={userAvatar} onAvatarChange={setUserAvatar} />}
+            
+            {/* UPDATED: Pass the highlighted ID down to the book appointment view */}
+            {activeView === 'BOOK_APPOINTMENT' && <BookAppointmentView highlightedRecordId={highlightedRecordId} />}
+            
+            {activeView === 'PROFILE' && (
+              <ProfileView 
+                avatar={userAvatar} 
+                onAvatarChange={setUserAvatar} 
+                onProfileLoaded={(name, id) => {
+                  setUserName(name);
+                  setPatientId(id);
+                }}
+              />
+            )}
           </div>
         </main>
       </div>
